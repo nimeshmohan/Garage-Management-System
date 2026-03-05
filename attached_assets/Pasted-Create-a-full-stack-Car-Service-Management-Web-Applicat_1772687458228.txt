@@ -1,0 +1,87 @@
+Create a full-stack Car Service Management Web Application.
+
+UI: Clean modern dashboard UI with responsive layout
+
+User Roles:
+1. Receptionist
+2. Service Adviser
+3. Job Controller
+4. Technician
+5. Customer
+
+Authentication:
+- Authentication (email/password)
+- Store user role in Firestore (field name: "plan")
+- Implement role-based route
+- After login redirect user to their respective dashboard
+
+Main Features:
+
+1. Receptionist Dashboard
+- Add new vehicle entry
+- Fields: Job Card Number, Customer Name, Phone, Vehicle Number, Vehicle Model, Service Type, Priority, Check-in Date
+- Edit vehicle details
+- Appointment booking form
+- Summary cards showing total vehicles, pending jobs, completed jobs
+
+2. Service Adviser Dashboard
+- View vehicle list in real-time
+- Perform vehicle inspection
+- Add findings and service notes
+- Update vehicle status to "Inspection Completed"
+
+3. Job Controller Dashboard
+- Display all vehicles that completed inspection
+- Table columns:
+  - Job Card Number
+  - Vehicle Info
+  - Service Type
+  - Priority
+  - Estimated Time
+  - Status
+  - Actions
+- Assign technician using a form
+- Technician bays (5 technicians)
+- Drag and drop jobs to technician columns
+- Update status to "Waiting for Technician Approval"
+
+4. Technician Dashboard
+- Show assigned vehicles
+- Update job progress
+- Mark job as completed
+- Add notes and work details
+
+5. Customer Dashboard
+- Customers can track their vehicle using vehicle number or job card
+- Show status timeline:
+  - Vehicle Received
+  - Inspection Completed
+  - Work in Progress
+  - Ready for Delivery
+
+Data Storage :
+Collection: vehicles
+Fields:
+- jobCardNumber
+- customerName
+- phone
+- vehicleNumber
+- vehicleModel
+- serviceType
+- priority
+- status
+- technician
+- findings
+- estimatedTime
+- createdAt
+
+UI Requirements:
+- Common header and sidebar layout
+- Sidebar menu changes based on user role
+- Show logged-in user's name in header
+- Real-time 
+Extra Features:
+- Activity feed (like Facebook timeline)
+- Notification icon for new updates
+- Search and filter vehicles
+- Status badges with colors
