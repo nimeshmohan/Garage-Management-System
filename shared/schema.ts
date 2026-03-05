@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -25,6 +25,14 @@ export const vehicles = pgTable("vehicles", {
   serviceNotes: text("service_notes"),
   workDetails: text("work_details"),
   estimatedTime: text("estimated_time"),
+  
+  // New fields for tracking and parts
+  isWaitingForParts: boolean("is_waiting_for_parts").default(false),
+  workStartedAt: timestamp("work_started_at"),
+  totalWorkDuration: integer("total_work_duration").default(0), // In seconds
+  isTimerRunning: boolean("is_timer_running").default(false),
+  lastTimerStartedAt: timestamp("last_timer_started_at"),
+  
   createdAt: timestamp("created_at").defaultNow(),
 });
 

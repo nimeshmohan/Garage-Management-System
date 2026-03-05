@@ -16,7 +16,7 @@ export function ReceptionistDashboard() {
   const [open, setOpen] = useState(false);
 
   const [formData, setFormData] = useState({
-    jobCardNumber: `JC-${Math.floor(Math.random() * 10000)}`,
+    jobCardNumber: "",
     customerName: "",
     phone: "",
     vehicleNumber: "",
@@ -31,7 +31,7 @@ export function ReceptionistDashboard() {
       onSuccess: () => {
         setOpen(false);
         setFormData({
-          jobCardNumber: `JC-${Math.floor(Math.random() * 10000)}`,
+          jobCardNumber: "",
           customerName: "", phone: "", vehicleNumber: "", vehicleModel: "", serviceType: "General Service", priority: "Normal"
         });
       }
@@ -64,7 +64,12 @@ export function ReceptionistDashboard() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Job Card #</label>
-                  <Input value={formData.jobCardNumber} disabled className="bg-muted" />
+                  <Input 
+                    required
+                    placeholder="JC-1234"
+                    value={formData.jobCardNumber} 
+                    onChange={e => setFormData({...formData, jobCardNumber: e.target.value})}
+                  />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Priority</label>

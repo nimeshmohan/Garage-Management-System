@@ -15,24 +15,34 @@ export function AdviserDashboard() {
   const [findings, setFindings] = useState("");
   const [serviceNotes, setServiceNotes] = useState("");
 
-  const pendingInspections = vehicles?.filter(v => v.status === "Vehicle Received") || [];
-  const history = vehicles?.filter(v => v.status !== "Vehicle Received") || [];
+  const pendingInspections = vehicles?.filter(v => v.status === "Vehicle Received" || v.status === "Ready for Delivery") || [];
+  const history = vehicles?.filter(v => v.status !== "Vehicle Received" && v.status !== "Ready for Delivery") || [];
 
   const handleInspect = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedId) return;
     
+    const vehicle = vehicles?.find(v => v.id === selectedId);
+    const isPostWork = vehicle?.status === "Ready for Delivery";
+    
     updateVehicle.mutate({
       id: selectedId,
-      findings,
-      serviceNotes,
-      status: "Inspection Completed"
+      findings: isPostWork ? vehicle.findings : findings,
+      serviceNotes: isPostWork ? vehicle.serviceNotes : serviceNotes,
+      status: isPostWork ? "Delivered" : "Inspection Completed"
     }, {
       onSuccess: () => {
         setSelectedId(null);
         setFindings("");
         setServiceNotes("");
       }
+    });
+  };
+
+  const handleReopen = (id: number) => {
+    updateVehicle.mutate({
+      id,
+      status: "Work in Progress"
     });
   };
 
@@ -51,22 +61,52 @@ export function AdviserDashboard() {
           <div className="flex justify-between"><span className="text-muted-foreground">Job Card:</span> <span className="font-medium">{v.jobCardNumber}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Customer:</span> <span className="font-medium">{v.customerName}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Reported Issue:</span> <span className="font-medium">{v.serviceType}</span></div>
-          {v.findings && (
-            <div className="pt-2 mt-2 border-t border-border/50">
-              <span className="text-muted-foreground block text-xs mb-1">Findings:</span>
-              <p className="text-xs line-clamp-2">{v.findings}</p>
+          {(v.findings || v.workDetails) && (
+            <div className="pt-2 mt-2 border-t border-border/50 space-y-2">
+              {v.findings && (
+                <div>
+                  <span className="text-muted-foreground block text-xs mb-1">Findings:</span>
+                  <p className="text-xs line-clamp-2">{v.findings}</p>
+                </div>
+              )}
+              {v.workDetails && (
+                <div>
+                  <span className="text-muted-foreground block text-xs mb-1">Work Details:</span>
+                  <p className="text-xs line-clamp-2">{v.workDetails}</p>
+                </div>
+              )}
             </div>
           )}
         </div>
 
         {showAction && (
-          <Button 
-            className="w-full shadow-lg shadow-primary/20 bg-gradient-to-r from-primary to-primary/80" 
-            onClick={() => setSelectedId(v.id)}
-          >
-            <FileSearch className="w-4 h-4 mr-2" />
-            Perform Inspection
-          </Button>
+          <div className="flex gap-2">
+            {v.status === "Ready for Delivery" ? (
+              <>
+                <Button 
+                  className="flex-1 bg-green-600 hover:bg-green-700"
+                  onClick={() => handleInspect({ preventDefault: () => {} } as any)} // Reuse logic for delivery
+                >
+                  Deliver Vehicle
+                </Button>
+                <Button 
+                  variant="outline"
+                  className="flex-1 border-destructive text-destructive"
+                  onClick={() => handleReopen(v.id)}
+                >
+                  Reopen Job
+                </Button>
+              </>
+            ) : (
+              <Button 
+                className="w-full shadow-lg shadow-primary/20 bg-gradient-to-r from-primary to-primary/80" 
+                onClick={() => setSelectedId(v.id)}
+              >
+                <FileSearch className="w-4 h-4 mr-2" />
+                Perform Inspection
+              </Button>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>
