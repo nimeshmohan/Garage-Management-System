@@ -242,6 +242,3 @@ export function ReceptionistDashboard() {
     </div>
   );
 }
-    </div>
-  );
-}
