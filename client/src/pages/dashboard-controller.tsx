@@ -10,6 +10,8 @@ import { StatusBadge } from "@/components/status-badge";
 import { Wrench, History, ClipboardList } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+import { format } from "date-fns";
+
 export function ControllerDashboard() {
   const { data: vehicles, isLoading } = useVehicles();
   const { data: technicians } = useTechnicians();
@@ -19,8 +21,22 @@ export function ControllerDashboard() {
   const [techId, setTechId] = useState("");
   const [estTime, setEstTime] = useState("");
 
-  const pendingAssignments = vehicles?.filter(v => v.status === "Inspection Completed") || [];
-  const assignedJobs = vehicles?.filter(v => v.status !== "Inspection Completed" && v.status !== "Vehicle Received") || [];
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterDate, setFilterDate] = useState("");
+
+  const filteredVehicles = vehicles?.filter(v => {
+    const matchesSearch = 
+      v.vehicleNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      v.jobCardNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      v.customerName.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesDate = !filterDate || (v.createdAt && format(new Date(v.createdAt), 'yyyy-MM-dd') === filterDate);
+    
+    return matchesSearch && matchesDate;
+  }) || [];
+
+  const pendingAssignments = filteredVehicles.filter(v => v.status === "Inspection Completed");
+  const assignedJobs = filteredVehicles.filter(v => v.status !== "Inspection Completed" && v.status !== "Vehicle Received");
 
   const handleAssign = (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,6 +102,25 @@ export function ControllerDashboard() {
       <div>
         <h2 className="text-3xl font-display font-bold text-foreground">Job Controller</h2>
         <p className="text-muted-foreground mt-1">Assign jobs to technicians and estimate completion times.</p>
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <div className="flex-1">
+          <Input 
+            placeholder="Filter by vehicle number or job card..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full"
+          />
+        </div>
+        <div className="w-full md:w-48">
+          <Input 
+            type="date"
+            value={filterDate}
+            onChange={(e) => setFilterDate(e.target.value)}
+            className="w-full"
+          />
+        </div>
       </div>
 
       <Tabs defaultValue="active" className="w-full">

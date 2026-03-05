@@ -8,6 +8,9 @@ import { StatusBadge } from "@/components/status-badge";
 import { FileSearch, History, ClipboardList } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+import { format } from "date-fns";
+import { Input } from "@/components/ui/input";
+
 export function AdviserDashboard() {
   const { data: vehicles, isLoading } = useVehicles();
   const updateVehicle = useUpdateVehicle();
@@ -20,8 +23,22 @@ export function AdviserDashboard() {
 
   const [showConfirmDeliver, setShowConfirmDeliver] = useState<number | null>(null);
 
-  const pendingInspections = vehicles?.filter(v => v.status === "Vehicle Received" || v.status === "Ready for Delivery") || [];
-  const history = vehicles?.filter(v => v.status !== "Vehicle Received" && v.status !== "Ready for Delivery") || [];
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterDate, setFilterDate] = useState("");
+
+  const filteredVehicles = vehicles?.filter(v => {
+    const matchesSearch = 
+      v.vehicleNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      v.jobCardNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      v.customerName.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesDate = !filterDate || (v.createdAt && format(new Date(v.createdAt), 'yyyy-MM-dd') === filterDate);
+    
+    return matchesSearch && matchesDate;
+  }) || [];
+
+  const pendingInspections = filteredVehicles.filter(v => v.status === "Vehicle Received" || v.status === "Ready for Delivery");
+  const history = filteredVehicles.filter(v => v.status !== "Vehicle Received" && v.status !== "Ready for Delivery");
 
   const handleDeliver = (id: number) => {
     updateVehicle.mutate({
@@ -157,6 +174,25 @@ export function AdviserDashboard() {
       <div>
         <h2 className="text-3xl font-display font-bold text-foreground">Service Adviser</h2>
         <p className="text-muted-foreground mt-1">Perform initial inspections and log vehicle issues.</p>
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <div className="flex-1">
+          <Input 
+            placeholder="Filter by vehicle number or job card..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full"
+          />
+        </div>
+        <div className="w-full md:w-48">
+          <Input 
+            type="date"
+            value={filterDate}
+            onChange={(e) => setFilterDate(e.target.value)}
+            className="w-full"
+          />
+        </div>
       </div>
 
       <Tabs defaultValue="active" className="w-full">

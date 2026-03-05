@@ -38,8 +38,22 @@ export function ReceptionistDashboard() {
     });
   };
 
-  const pendingJobs = vehicles?.filter(v => v.status !== "Ready for Delivery").length || 0;
-  const completedJobs = vehicles?.filter(v => v.status === "Ready for Delivery").length || 0;
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterDate, setFilterDate] = useState("");
+
+  const filteredVehicles = vehicles?.filter(v => {
+    const matchesSearch = 
+      v.vehicleNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      v.jobCardNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      v.customerName.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesDate = !filterDate || (v.createdAt && format(new Date(v.createdAt), 'yyyy-MM-dd') === filterDate);
+    
+    return matchesSearch && matchesDate;
+  }) || [];
+
+  const pendingJobsCount = vehicles?.filter(v => v.status !== "Ready for Delivery").length || 0;
+  const completedJobsCount = vehicles?.filter(v => v.status === "Ready for Delivery").length || 0;
 
   return (
     <div className="space-y-6">
@@ -133,7 +147,7 @@ export function ReceptionistDashboard() {
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Active Jobs</p>
-              <h3 className="text-3xl font-display font-bold">{pendingJobs}</h3>
+              <h3 className="text-3xl font-display font-bold">{pendingJobsCount}</h3>
             </div>
           </CardContent>
         </Card>
@@ -144,10 +158,30 @@ export function ReceptionistDashboard() {
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Completed</p>
-              <h3 className="text-3xl font-display font-bold">{completedJobs}</h3>
+              <h3 className="text-3xl font-display font-bold">{completedJobsCount}</h3>
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="flex-1">
+          <Input 
+            placeholder="Filter by vehicle number or job card..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full"
+          />
+        </div>
+        <div className="w-full md:w-48">
+          <Input 
+            type="date"
+            value={filterDate}
+            onChange={(e) => setFilterDate(e.target.value)}
+            className="w-full"
+          />
+        </div>
       </div>
 
       {/* Table */}
@@ -166,10 +200,10 @@ export function ReceptionistDashboard() {
             <tbody>
               {isLoading ? (
                 <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
-              ) : vehicles?.length === 0 ? (
-                <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No vehicles found.</td></tr>
+              ) : filteredVehicles.length === 0 ? (
+                <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No vehicles found matching filters.</td></tr>
               ) : (
-                vehicles?.map((v, i) => (
+                filteredVehicles.map((v, i) => (
                   <motion.tr 
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -205,6 +239,9 @@ export function ReceptionistDashboard() {
           </table>
         </div>
       </Card>
+    </div>
+  );
+}
     </div>
   );
 }

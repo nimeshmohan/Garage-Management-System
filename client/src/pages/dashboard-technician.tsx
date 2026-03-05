@@ -9,6 +9,9 @@ import { PlayCircle, CheckCircle2, History, ClipboardList, PauseCircle, Package 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+import { format } from "date-fns";
+import { Input } from "@/components/ui/input";
+
 export function TechnicianDashboard() {
   const { data: user } = useUser();
   const { data: vehicles, isLoading } = useVehicles();
@@ -19,6 +22,20 @@ export function TechnicianDashboard() {
   const [partsNeeded, setPartsNeeded] = useState("");
   const [partsWaitVehicle, setPartsWaitVehicle] = useState<any>(null);
   const [currentTime, setCurrentTime] = useState<Record<number, number>>({});
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterDate, setFilterDate] = useState("");
+
+  const filteredVehicles = vehicles?.filter(v => {
+    const matchesSearch = 
+      v.vehicleNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      v.jobCardNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      v.customerName.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesDate = !filterDate || (v.createdAt && format(new Date(v.createdAt), 'yyyy-MM-dd') === filterDate);
+    
+    return matchesSearch && matchesDate;
+  }) || [];
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -40,8 +57,8 @@ export function TechnicianDashboard() {
     return () => clearInterval(timer);
   }, [vehicles]);
 
-  const activeJobs = vehicles?.filter(v => v.technicianId === user?.id && v.status !== "Ready for Delivery" && v.status !== "Delivered") || [];
-  const completedJobs = vehicles?.filter(v => v.technicianId === user?.id && (v.status === "Ready for Delivery" || v.status === "Delivered")) || [];
+  const activeJobs = filteredVehicles.filter(v => v.technicianId === user?.id && v.status !== "Ready for Delivery" && v.status !== "Delivered");
+  const completedJobs = filteredVehicles.filter(v => v.technicianId === user?.id && (v.status === "Ready for Delivery" || v.status === "Delivered"));
 
   const toggleTimer = (v: any) => {
     if (v.isTimerRunning) {
@@ -215,6 +232,25 @@ export function TechnicianDashboard() {
       <div>
         <h2 className="text-3xl font-display font-bold text-foreground">Technician Dashboard</h2>
         <p className="text-muted-foreground mt-1">Review assigned tasks and update job progress.</p>
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <div className="flex-1">
+          <Input 
+            placeholder="Filter by vehicle number or job card..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full"
+          />
+        </div>
+        <div className="w-full md:w-48">
+          <Input 
+            type="date"
+            value={filterDate}
+            onChange={(e) => setFilterDate(e.target.value)}
+            className="w-full"
+          />
+        </div>
       </div>
 
       <Tabs defaultValue="active" className="w-full">
