@@ -31,7 +31,7 @@ export const vehicles = pgTable("vehicles", {
   workStartedAt: timestamp("work_started_at"),
   totalWorkDuration: integer("total_work_duration").default(0), // In seconds
   isTimerRunning: boolean("is_timer_running").default(false),
-  lastTimerStartedAt: timestamp("last_timer_started_at"),
+  lastTimerStartedAt: text("last_timer_started_at"), // Changed to text for easier ISO storage from frontend
   
   createdAt: timestamp("created_at").defaultNow(),
 });
