@@ -18,8 +18,21 @@ export function AdviserDashboard() {
   const [reopenReason, setReopenReason] = useState("");
   const [reopenId, setReopenId] = useState<number | null>(null);
 
+  const [showConfirmDeliver, setShowConfirmDeliver] = useState<number | null>(null);
+
   const pendingInspections = vehicles?.filter(v => v.status === "Vehicle Received" || v.status === "Ready for Delivery") || [];
   const history = vehicles?.filter(v => v.status !== "Vehicle Received" && v.status !== "Ready for Delivery") || [];
+
+  const handleDeliver = (id: number) => {
+    updateVehicle.mutate({
+      id,
+      status: "Delivered"
+    }, {
+      onSuccess: () => {
+        setShowConfirmDeliver(null);
+      }
+    });
+  };
 
   const handleInspect = (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,7 +125,7 @@ export function AdviserDashboard() {
               <>
                 <Button 
                   className="flex-1 bg-green-600 hover:bg-green-700"
-                  onClick={() => handleInspect({ preventDefault: () => {} } as any)} // Reuse logic for delivery
+                  onClick={() => setShowConfirmDeliver(v.id)}
                 >
                   Deliver Vehicle
                 </Button>
@@ -240,6 +253,36 @@ export function AdviserDashboard() {
               {updateVehicle.isPending ? "Reopening..." : "Confirm Reopen"}
             </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Delivery Dialog */}
+      <Dialog open={!!showConfirmDeliver} onOpenChange={(val) => !val && setShowConfirmDeliver(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Delivery</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to mark this vehicle as delivered? This will record the current date and time.
+            </p>
+            <div className="flex gap-3">
+              <Button 
+                variant="outline" 
+                className="flex-1" 
+                onClick={() => setShowConfirmDeliver(null)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white" 
+                onClick={() => showConfirmDeliver && handleDeliver(showConfirmDeliver)}
+                disabled={updateVehicle.isPending}
+              >
+                {updateVehicle.isPending ? "Updating..." : "Confirm Delivery"}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
