@@ -39,17 +39,13 @@ export function TechnicianDashboard() {
   const activeJobs = vehicles?.filter(v => v.technicianId === user?.id && v.status !== "Ready for Delivery" && v.status !== "Delivered") || [];
   const completedJobs = vehicles?.filter(v => v.technicianId === user?.id && (v.status === "Ready for Delivery" || v.status === "Delivered")) || [];
 
-  const handleUpdateStatus = (id: number, newStatus: string) => {
-    updateVehicle.mutate({ id, status: newStatus });
-  };
-
   const toggleTimer = (v: any) => {
     const now = new Date().toISOString();
     if (v.isTimerRunning) {
       const start = new Date(v.lastTimerStartedAt).getTime();
       const currentNow = new Date().getTime();
       const elapsed = Math.floor((currentNow - start) / 1000);
-      const newTotal = (v.totalWorkDuration || 0) + elapsed;
+      const newTotal = (v.totalWorkDuration || 0) + (isNaN(elapsed) ? 0 : elapsed);
       
       updateVehicle.mutate({
         id: v.id,
@@ -58,11 +54,12 @@ export function TechnicianDashboard() {
         lastTimerStartedAt: null
       });
     } else {
+      const startTime = new Date().toISOString();
       updateVehicle.mutate({
         id: v.id,
         isTimerRunning: true,
-        lastTimerStartedAt: now,
-        status: "Work in Progress" // Auto-start work if not already
+        lastTimerStartedAt: startTime,
+        status: v.status === "Waiting for Technician Approval" ? "Work in Progress" : v.status
       });
     }
   };
