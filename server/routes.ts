@@ -1,16 +1,171 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
+import type { Server } from "http";
 import { storage } from "./storage";
+import { api } from "@shared/routes";
+import { z } from "zod";
+import session from "express-session";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
+  // Use simple session based auth for MVP
+  app.use(session({
+    secret: process.env.SESSION_SECRET || 'super-secret',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false } // Set to true if using https
+  }));
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+  // Auth Routes
+  app.post(api.auth.login.path, async (req, res) => {
+    try {
+      const { username, password } = api.auth.login.input.parse(req.body);
+      const user = await storage.getUserByUsername(username);
+      if (!user || user.password !== password) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+      (req.session as any).userId = user.id;
+      res.json(user);
+    } catch (e) {
+      res.status(400).json({ message: "Invalid input" });
+    }
+  });
+
+  app.post(api.auth.register.path, async (req, res) => {
+    try {
+      const input = api.auth.register.input.parse(req.body);
+      const existing = await storage.getUserByUsername(input.username);
+      if (existing) {
+        return res.status(400).json({ message: "Username already exists" });
+      }
+      const user = await storage.createUser(input);
+      (req.session as any).userId = user.id;
+      res.status(201).json(user);
+    } catch (e) {
+      if (e instanceof z.ZodError) {
+        res.status(400).json({ message: e.errors[0].message });
+      } else {
+        res.status(400).json({ message: "Invalid input" });
+      }
+    }
+  });
+
+  app.post(api.auth.logout.path, (req, res) => {
+    req.session.destroy(() => {
+      res.json({ message: "Logged out" });
+    });
+  });
+
+  app.get(api.auth.me.path, async (req, res) => {
+    const userId = (req.session as any).userId;
+    if (!userId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    const user = await storage.getUser(userId);
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+    res.json(user);
+  });
+
+  // Users Routes
+  app.get(api.users.listTechnicians.path, async (req, res) => {
+    const technicians = await storage.getTechnicians();
+    res.json(technicians);
+  });
+
+  // Vehicles Routes
+  app.get(api.vehicles.list.path, async (req, res) => {
+    const vehiclesList = await storage.getVehicles();
+    res.json(vehiclesList);
+  });
+
+  app.get(api.vehicles.get.path, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const vehicle = await storage.getVehicle(id);
+    if (!vehicle) {
+      return res.status(404).json({ message: "Vehicle not found" });
+    }
+    res.json(vehicle);
+  });
+
+  app.post(api.vehicles.create.path, async (req, res) => {
+    try {
+      const input = api.vehicles.create.input.parse(req.body);
+      const vehicle = await storage.createVehicle(input);
+      res.status(201).json(vehicle);
+    } catch (e) {
+      if (e instanceof z.ZodError) {
+        res.status(400).json({ message: e.errors[0].message });
+      } else {
+        res.status(400).json({ message: "Invalid input" });
+      }
+    }
+  });
+
+  app.put(api.vehicles.update.path, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const input = api.vehicles.update.input.parse(req.body);
+      const vehicle = await storage.updateVehicle(id, input);
+      res.json(vehicle);
+    } catch (e) {
+      if (e instanceof z.ZodError) {
+        res.status(400).json({ message: e.errors[0].message });
+      } else {
+        res.status(404).json({ message: "Not found or invalid" });
+      }
+    }
+  });
+
+  app.get(api.vehicles.track.path, async (req, res) => {
+    const identifier = req.params.identifier;
+    const vehicle = await storage.trackVehicle(identifier);
+    if (!vehicle) {
+      return res.status(404).json({ message: "Vehicle not found" });
+    }
+    res.json(vehicle);
+  });
+
+  // Seed DB with mock users
+  seedDatabase().catch(console.error);
 
   return httpServer;
+}
+
+async function seedDatabase() {
+  const existingUsers = await storage.getTechnicians();
+  if (existingUsers.length === 0) {
+    await storage.createUser({
+      username: "reception@test.com",
+      password: "password123",
+      name: "Alice Reception",
+      role: "receptionist"
+    });
+    await storage.createUser({
+      username: "adviser@test.com",
+      password: "password123",
+      name: "Bob Adviser",
+      role: "service_adviser"
+    });
+    await storage.createUser({
+      username: "controller@test.com",
+      password: "password123",
+      name: "Charlie Controller",
+      role: "job_controller"
+    });
+    await storage.createUser({
+      username: "tech1@test.com",
+      password: "password123",
+      name: "Dave Technician",
+      role: "technician"
+    });
+    await storage.createUser({
+      username: "tech2@test.com",
+      password: "password123",
+      name: "Eve Technician",
+      role: "technician"
+    });
+  }
 }

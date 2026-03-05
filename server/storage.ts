@@ -1,38 +1,76 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import { db } from "./db";
+import {
+  users, vehicles,
+  type User, type InsertUser,
+  type Vehicle, type InsertVehicle
+} from "@shared/schema";
+import { eq, or } from "drizzle-orm";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
+  // Users
+  getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  getTechnicians(): Promise<User[]>;
+
+  // Vehicles
+  getVehicles(): Promise<Vehicle[]>;
+  getVehicle(id: number): Promise<Vehicle | undefined>;
+  createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
+  updateVehicle(id: number, updates: Partial<InsertVehicle>): Promise<Vehicle>;
+  trackVehicle(identifier: string): Promise<Vehicle | undefined>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
-  }
-
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+export class DatabaseStorage implements IStorage {
+  // User operations
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
+  }
+
+  async getTechnicians(): Promise<User[]> {
+    return await db.select().from(users).where(eq(users.role, 'technician'));
+  }
+
+  // Vehicle operations
+  async getVehicles(): Promise<Vehicle[]> {
+    return await db.select().from(vehicles);
+  }
+
+  async getVehicle(id: number): Promise<Vehicle | undefined> {
+    const [vehicle] = await db.select().from(vehicles).where(eq(vehicles.id, id));
+    return vehicle;
+  }
+
+  async createVehicle(insertVehicle: InsertVehicle): Promise<Vehicle> {
+    const [vehicle] = await db.insert(vehicles).values(insertVehicle).returning();
+    return vehicle;
+  }
+
+  async updateVehicle(id: number, updates: Partial<InsertVehicle>): Promise<Vehicle> {
+    const [vehicle] = await db.update(vehicles).set(updates).where(eq(vehicles.id, id)).returning();
+    return vehicle;
+  }
+
+  async trackVehicle(identifier: string): Promise<Vehicle | undefined> {
+    const [vehicle] = await db.select().from(vehicles).where(
+      or(
+        eq(vehicles.jobCardNumber, identifier),
+        eq(vehicles.vehicleNumber, identifier)
+      )
+    );
+    return vehicle;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
