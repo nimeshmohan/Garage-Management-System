@@ -16,20 +16,24 @@ export function TechnicianDashboard() {
   
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [workDetails, setWorkDetails] = useState("");
+  const [partsNeeded, setPartsNeeded] = useState("");
+  const [partsWaitVehicle, setPartsWaitVehicle] = useState<any>(null);
   const [currentTime, setCurrentTime] = useState<Record<number, number>>({});
 
   useEffect(() => {
     const timer = setInterval(() => {
       const updates: Record<number, number> = {};
       vehicles?.forEach(v => {
+        let total = v.totalWorkDuration || 0;
         if (v.isTimerRunning && v.lastTimerStartedAt) {
           const start = new Date(v.lastTimerStartedAt).getTime();
-          const now = new Date().getTime();
-          const elapsedSinceStart = Math.floor((now - start) / 1000);
-          updates[v.id] = (v.totalWorkDuration || 0) + elapsedSinceStart;
-        } else {
-          updates[v.id] = v.totalWorkDuration || 0;
+          const now = Date.now();
+          const elapsed = Math.floor((now - start) / 1000);
+          if (!isNaN(elapsed) && elapsed > 0) {
+            total += elapsed;
+          }
         }
+        updates[v.id] = total;
       });
       setCurrentTime(updates);
     }, 1000);
@@ -40,12 +44,11 @@ export function TechnicianDashboard() {
   const completedJobs = vehicles?.filter(v => v.technicianId === user?.id && (v.status === "Ready for Delivery" || v.status === "Delivered")) || [];
 
   const toggleTimer = (v: any) => {
-    const now = new Date().toISOString();
     if (v.isTimerRunning) {
       const start = new Date(v.lastTimerStartedAt).getTime();
-      const currentNow = new Date().getTime();
-      const elapsed = Math.floor((currentNow - start) / 1000);
-      const newTotal = (v.totalWorkDuration || 0) + (isNaN(elapsed) ? 0 : elapsed);
+      const now = Date.now();
+      const elapsed = Math.floor((now - start) / 1000);
+      const newTotal = (v.totalWorkDuration || 0) + (isNaN(elapsed) || elapsed < 0 ? 0 : elapsed);
       
       updateVehicle.mutate({
         id: v.id,
@@ -54,37 +57,48 @@ export function TechnicianDashboard() {
         lastTimerStartedAt: null
       });
     } else {
-      const startTime = new Date().toISOString();
       updateVehicle.mutate({
         id: v.id,
         isTimerRunning: true,
-        lastTimerStartedAt: startTime,
+        lastTimerStartedAt: new Date().toISOString(),
         status: v.status === "Waiting for Technician Approval" ? "Work in Progress" : v.status
       });
     }
   };
 
-  const togglePartsWaiting = (v: any) => {
-    const now = new Date().toISOString();
-    if (v.isWaitingForParts) {
-      const start = new Date(v.lastPartsWaitStartedAt).getTime();
-      const currentNow = new Date().getTime();
-      const elapsed = Math.floor((currentNow - start) / 1000);
-      const newTotal = (v.partsWaitDuration || 0) + (isNaN(elapsed) ? 0 : elapsed);
-      
-      updateVehicle.mutate({
-        id: v.id,
-        isWaitingForParts: false,
-        partsWaitDuration: newTotal,
-        lastPartsWaitStartedAt: null
-      });
-    } else {
-      updateVehicle.mutate({
-        id: v.id,
-        isWaitingForParts: true,
-        lastPartsWaitStartedAt: now
-      });
+  const handlePartsWaitSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!partsWaitVehicle) return;
+
+    updateVehicle.mutate({
+      id: partsWaitVehicle.id,
+      isWaitingForParts: true,
+      lastPartsWaitStartedAt: new Date().toISOString(),
+      partsNeeded: partsNeeded
+    }, {
+      onSuccess: () => {
+        setPartsWaitVehicle(null);
+        setPartsNeeded("");
+      }
+    });
+  };
+
+  const togglePartsReceived = (v: any) => {
+    const start = v.lastPartsWaitStartedAt ? new Date(v.lastPartsWaitStartedAt).getTime() : null;
+    const now = Date.now();
+    let additionalWait = 0;
+    
+    if (start) {
+      const elapsed = Math.floor((now - start) / 1000);
+      additionalWait = isNaN(elapsed) || elapsed < 0 ? 0 : elapsed;
     }
+
+    updateVehicle.mutate({
+      id: v.id,
+      isWaitingForParts: false,
+      partsWaitDuration: (v.partsWaitDuration || 0) + additionalWait,
+      lastPartsWaitStartedAt: null
+    });
   };
 
   const formatTime = (seconds: number) => {
@@ -179,7 +193,7 @@ export function TechnicianDashboard() {
           <Button 
             variant="outline"
             className={`flex-1 ${v.isWaitingForParts ? "bg-orange-100 border-orange-500 text-orange-700" : ""}`}
-            onClick={() => togglePartsWaiting(v)}
+            onClick={() => v.isWaitingForParts ? togglePartsReceived(v) : setPartsWaitVehicle(v)}
           >
             <Package className="w-4 h-4 mr-2" /> {v.isWaitingForParts ? "Parts Received" : "Waiting for Parts"}
           </Button>
@@ -262,6 +276,29 @@ export function TechnicianDashboard() {
             </div>
             <Button type="submit" className="w-full" disabled={updateVehicle.isPending}>
               {updateVehicle.isPending ? "Submitting..." : "Finish Job & Mark Ready"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!partsWaitVehicle} onOpenChange={(val) => !val && setPartsWaitVehicle(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Waiting for Parts</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handlePartsWaitSubmit} className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Parts Needed</label>
+              <Textarea 
+                required 
+                placeholder="List the parts required for this job..."
+                className="min-h-[100px]"
+                value={partsNeeded}
+                onChange={e => setPartsNeeded(e.target.value)}
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={updateVehicle.isPending}>
+              {updateVehicle.isPending ? "Submitting..." : "Confirm Waiting for Parts"}
             </Button>
           </form>
         </DialogContent>

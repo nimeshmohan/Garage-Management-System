@@ -36,6 +36,7 @@ export const vehicles = pgTable("vehicles", {
   // New fields for parts tracking and reopening
   partsWaitDuration: integer("parts_wait_duration").default(0), // In seconds
   lastPartsWaitStartedAt: text("last_parts_wait_started_at"),
+  partsNeeded: text("parts_needed"),
   reopenReason: text("reopen_reason"),
   
   createdAt: timestamp("created_at").defaultNow(),

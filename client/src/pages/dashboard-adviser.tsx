@@ -30,8 +30,8 @@ export function AdviserDashboard() {
     
     updateVehicle.mutate({
       id: selectedId,
-      findings: isPostWork ? vehicle.findings : findings,
-      serviceNotes: isPostWork ? vehicle.serviceNotes : serviceNotes,
+      findings: isPostWork ? (vehicle?.findings || findings) : findings,
+      serviceNotes: isPostWork ? (vehicle?.serviceNotes || serviceNotes) : serviceNotes,
       status: isPostWork ? "Delivered" : "Inspection Completed"
     }, {
       onSuccess: () => {
