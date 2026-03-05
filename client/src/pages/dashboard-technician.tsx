@@ -65,10 +65,26 @@ export function TechnicianDashboard() {
   };
 
   const togglePartsWaiting = (v: any) => {
-    updateVehicle.mutate({
-      id: v.id,
-      isWaitingForParts: !v.isWaitingForParts
-    });
+    const now = new Date().toISOString();
+    if (v.isWaitingForParts) {
+      const start = new Date(v.lastPartsWaitStartedAt).getTime();
+      const currentNow = new Date().getTime();
+      const elapsed = Math.floor((currentNow - start) / 1000);
+      const newTotal = (v.partsWaitDuration || 0) + (isNaN(elapsed) ? 0 : elapsed);
+      
+      updateVehicle.mutate({
+        id: v.id,
+        isWaitingForParts: false,
+        partsWaitDuration: newTotal,
+        lastPartsWaitStartedAt: null
+      });
+    } else {
+      updateVehicle.mutate({
+        id: v.id,
+        isWaitingForParts: true,
+        lastPartsWaitStartedAt: now
+      });
+    }
   };
 
   const formatTime = (seconds: number) => {

@@ -15,6 +15,9 @@ export function AdviserDashboard() {
   const [findings, setFindings] = useState("");
   const [serviceNotes, setServiceNotes] = useState("");
 
+  const [reopenReason, setReopenReason] = useState("");
+  const [reopenId, setReopenId] = useState<number | null>(null);
+
   const pendingInspections = vehicles?.filter(v => v.status === "Vehicle Received" || v.status === "Ready for Delivery") || [];
   const history = vehicles?.filter(v => v.status !== "Vehicle Received" && v.status !== "Ready for Delivery") || [];
 
@@ -39,11 +42,26 @@ export function AdviserDashboard() {
     });
   };
 
-  const handleReopen = (id: number) => {
+  const handleReopenSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reopenId) return;
+    
     updateVehicle.mutate({
-      id,
-      status: "Work in Progress"
+      id: reopenId,
+      status: "Work in Progress",
+      reopenReason
+    }, {
+      onSuccess: () => {
+        setReopenId(null);
+        setReopenReason("");
+      }
     });
+  };
+
+  const formatDuration = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    return `${hrs}h ${mins}m`;
   };
 
   const VehicleCard = ({ v, showAction = true }: { v: any, showAction?: boolean }) => (
@@ -60,8 +78,11 @@ export function AdviserDashboard() {
         <div className="bg-muted/50 p-3 rounded-lg text-sm mb-6 space-y-2">
           <div className="flex justify-between"><span className="text-muted-foreground">Job Card:</span> <span className="font-medium">{v.jobCardNumber}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Customer:</span> <span className="font-medium">{v.customerName}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Reported Issue:</span> <span className="font-medium">{v.serviceType}</span></div>
-          {(v.findings || v.workDetails) && (
+          <div className="flex justify-between"><span className="text-muted-foreground">Work Time:</span> <span className="font-medium">{formatDuration(v.totalWorkDuration || 0)}</span></div>
+          {v.partsWaitDuration > 0 && (
+            <div className="flex justify-between"><span className="text-muted-foreground">Parts Wait:</span> <span className="font-medium text-orange-600">{formatDuration(v.partsWaitDuration)}</span></div>
+          )}
+          {(v.findings || v.workDetails || v.reopenReason) && (
             <div className="pt-2 mt-2 border-t border-border/50 space-y-2">
               {v.findings && (
                 <div>
@@ -73,6 +94,12 @@ export function AdviserDashboard() {
                 <div>
                   <span className="text-muted-foreground block text-xs mb-1">Work Details:</span>
                   <p className="text-xs line-clamp-2">{v.workDetails}</p>
+                </div>
+              )}
+              {v.reopenReason && (
+                <div>
+                  <span className="text-destructive block text-xs font-bold mb-1">Reopen Reason:</span>
+                  <p className="text-xs text-destructive bg-destructive/5 p-1 rounded">{v.reopenReason}</p>
                 </div>
               )}
             </div>
@@ -92,7 +119,7 @@ export function AdviserDashboard() {
                 <Button 
                   variant="outline"
                   className="flex-1 border-destructive text-destructive"
-                  onClick={() => handleReopen(v.id)}
+                  onClick={() => setReopenId(v.id)}
                 >
                   Reopen Job
                 </Button>
@@ -160,6 +187,7 @@ export function AdviserDashboard() {
         </TabsContent>
       </Tabs>
 
+      {/* Inspection Dialog */}
       <Dialog open={!!selectedId} onOpenChange={(val) => !val && setSelectedId(null)}>
         <DialogContent>
           <DialogHeader>
@@ -186,6 +214,30 @@ export function AdviserDashboard() {
             </div>
             <Button type="submit" className="w-full" disabled={updateVehicle.isPending}>
               {updateVehicle.isPending ? "Saving..." : "Complete Inspection & Forward"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reopen Dialog */}
+      <Dialog open={!!reopenId} onOpenChange={(val) => !val && setReopenId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reopen Job Card</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleReopenSubmit} className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Reason for Reopening</label>
+              <Textarea 
+                required 
+                placeholder="Explain why the work needs to be redone..."
+                className="min-h-[100px]"
+                value={reopenReason}
+                onChange={e => setReopenReason(e.target.value)}
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={updateVehicle.isPending}>
+              {updateVehicle.isPending ? "Reopening..." : "Confirm Reopen"}
             </Button>
           </form>
         </DialogContent>

@@ -31,7 +31,12 @@ export const vehicles = pgTable("vehicles", {
   workStartedAt: timestamp("work_started_at"),
   totalWorkDuration: integer("total_work_duration").default(0), // In seconds
   isTimerRunning: boolean("is_timer_running").default(false),
-  lastTimerStartedAt: text("last_timer_started_at"), // Changed to text for easier ISO storage from frontend
+  lastTimerStartedAt: text("last_timer_started_at"), 
+  
+  // New fields for parts tracking and reopening
+  partsWaitDuration: integer("parts_wait_duration").default(0), // In seconds
+  lastPartsWaitStartedAt: text("last_parts_wait_started_at"),
+  reopenReason: text("reopen_reason"),
   
   createdAt: timestamp("created_at").defaultNow(),
 });

@@ -61,7 +61,7 @@ export function ControllerDashboard() {
                 {v.findings || "No findings recorded."}
               </p>
             </div>
-            {!showAction && assignedTech && (
+            {assignedTech && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Wrench className="w-3 h-3" />
                 <span>Assigned to: <span className="font-medium text-foreground">{assignedTech.name}</span></span>
@@ -69,15 +69,13 @@ export function ControllerDashboard() {
             )}
           </div>
 
-          {showAction && (
-            <Button 
-              className="w-full bg-slate-800 hover:bg-slate-900 text-white" 
-              onClick={() => setSelectedId(v.id)}
-            >
-              <Wrench className="w-4 h-4 mr-2" />
-              Assign to Technician
-            </Button>
-          )}
+          <Button 
+            className={`w-full ${showAction ? "bg-slate-800 hover:bg-slate-900" : "bg-muted text-muted-foreground hover:bg-muted/80"} text-white`} 
+            onClick={() => setSelectedId(v.id)}
+          >
+            <Wrench className="w-4 h-4 mr-2" />
+            {showAction ? "Assign to Technician" : "Reallocate Technician"}
+          </Button>
         </CardContent>
       </Card>
     );
