@@ -3,7 +3,7 @@ import { useVehicles, useCreateVehicle, useUpdateVehicle } from "@/hooks/use-veh
 import { format } from "date-fns";
 import {
   Plus, Users, CheckCircle, Clock, Upload, FileSpreadsheet, X,
-  AlertCircle, CalendarClock, CarFront, History, ChevronDown, LogIn
+  AlertCircle, CalendarClock, CarFront, History, LogIn, Pencil, Check
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +47,9 @@ export function ReceptionistDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDate, setFilterDate] = useState("");
 
+  const [receiveDialogVehicle, setReceiveDialogVehicle] = useState<any | null>(null);
+  const [receiveAdviserName, setReceiveAdviserName] = useState("");
+
   const [formData, setFormData] = useState({
     jobCardNumber: "",
     customerName: "",
@@ -70,13 +73,12 @@ export function ReceptionistDashboard() {
 
   const handleWalkInSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const jobCard = formData.jobCardNumber || `WI-${Date.now()}`;
     createVehicle.mutate({
       ...formData,
-      jobCardNumber: jobCard,
+      jobCardNumber: formData.jobCardNumber || null,
       serviceType: formData.serviceAdviser,
       priority: "Normal",
-      status: "Walk-in",
+      status: "Waiting for Adviser",
       entryType: "Walk-in",
     }, {
       onSuccess: () => {
@@ -87,20 +89,27 @@ export function ReceptionistDashboard() {
     });
   };
 
-  const handleReceiveVehicle = (vehicle: any) => {
-    const jobCard = vehicle.ssdNo || undefined;
+  const handleOpenReceiveDialog = (vehicle: any) => {
+    setReceiveDialogVehicle(vehicle);
+    setReceiveAdviserName(vehicle.serviceAdviser || "");
+  };
+
+  const handleConfirmReceive = () => {
+    if (!receiveDialogVehicle) return;
+    const jobCard = receiveDialogVehicle.ssdNo || null;
     updateVehicle.mutate({
-      id: vehicle.id,
+      id: receiveDialogVehicle.id,
       status: "Waiting for Adviser",
+      serviceAdviser: receiveAdviserName || receiveDialogVehicle.serviceAdviser,
       ...(jobCard ? { jobCardNumber: jobCard } : {}),
     }, {
       onSuccess: () => {
         toast({
           title: "Vehicle received",
-          description: jobCard
-            ? `Assigned to ${vehicle.serviceAdviser || 'adviser'}. Job card: ${jobCard}`
-            : `Assigned to ${vehicle.serviceAdviser || 'adviser'}. Adviser will enter the job card number.`,
+          description: `Assigned to ${receiveAdviserName || receiveDialogVehicle.serviceAdviser || 'adviser'}.`,
         });
+        setReceiveDialogVehicle(null);
+        setReceiveAdviserName("");
       }
     });
   };
@@ -314,7 +323,7 @@ export function ReceptionistDashboard() {
       {/* Vehicle Sections */}
       {showHistory ? (
         <div>
-          <VehicleList list={displayList} isLoading={isLoading} onReceive={handleReceiveVehicle} updateVehicle={updateVehicle} />
+          <VehicleList list={displayList} isLoading={isLoading} onReceive={handleOpenReceiveDialog} updateVehicle={updateVehicle} />
         </div>
       ) : (
         <Tabs defaultValue="appointments" className="w-full">
@@ -332,13 +341,13 @@ export function ReceptionistDashboard() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="appointments" className="mt-0">
-            <VehicleList list={todayAppointments} isLoading={isLoading} onReceive={handleReceiveVehicle} updateVehicle={updateVehicle} />
+            <VehicleList list={todayAppointments} isLoading={isLoading} onReceive={handleOpenReceiveDialog} updateVehicle={updateVehicle} />
           </TabsContent>
           <TabsContent value="walkins" className="mt-0">
-            <VehicleList list={walkIns} isLoading={isLoading} onReceive={handleReceiveVehicle} updateVehicle={updateVehicle} />
+            <VehicleList list={walkIns} isLoading={isLoading} onReceive={handleOpenReceiveDialog} updateVehicle={updateVehicle} />
           </TabsContent>
           <TabsContent value="all" className="mt-0">
-            <VehicleList list={applyFilters(todayVehicles)} isLoading={isLoading} onReceive={handleReceiveVehicle} updateVehicle={updateVehicle} />
+            <VehicleList list={applyFilters(todayVehicles)} isLoading={isLoading} onReceive={handleOpenReceiveDialog} updateVehicle={updateVehicle} />
           </TabsContent>
         </Tabs>
       )}
@@ -395,6 +404,84 @@ export function ReceptionistDashboard() {
               {createVehicle.isPending ? "Saving..." : "Create Walk-in Entry"}
             </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Receive Vehicle Preview Dialog */}
+      <Dialog open={!!receiveDialogVehicle} onOpenChange={(open) => { if (!open) { setReceiveDialogVehicle(null); setReceiveAdviserName(""); } }}>
+        <DialogContent className="w-full max-w-[95vw] sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-2">
+              <LogIn className="w-5 h-5 text-green-600" /> Receive Vehicle
+            </DialogTitle>
+          </DialogHeader>
+          {receiveDialogVehicle && (
+            <div className="space-y-4 mt-2">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 bg-muted/40 rounded-xl p-4 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Customer</p>
+                  <p className="font-semibold">{receiveDialogVehicle.customerName}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Vehicle No.</p>
+                  <p className="font-semibold">{receiveDialogVehicle.vehicleNumber}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Model</p>
+                  <p className="font-medium">{receiveDialogVehicle.vehicleModel || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Appt. Time</p>
+                  <p className="font-medium">{receiveDialogVehicle.appointmentTime || '—'}</p>
+                </div>
+                {receiveDialogVehicle.ssdNo && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">SSD No. (Job Card)</p>
+                    <p className="font-medium">{receiveDialogVehicle.ssdNo}</p>
+                  </div>
+                )}
+                {receiveDialogVehicle.serviceOrderType && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">Order Type</p>
+                    <p className="font-medium">{receiveDialogVehicle.serviceOrderType}</p>
+                  </div>
+                )}
+                {receiveDialogVehicle.phone && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">Phone</p>
+                    <p className="font-medium">{receiveDialogVehicle.phone}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Service Adviser</label>
+                <Select value={receiveAdviserName} onValueChange={setReceiveAdviserName}>
+                  <SelectTrigger data-testid="select-receive-adviser">
+                    <SelectValue placeholder="Select adviser" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SERVICE_ADVISERS.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <Button variant="outline" className="flex-1" onClick={() => { setReceiveDialogVehicle(null); setReceiveAdviserName(""); }}>
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                  onClick={handleConfirmReceive}
+                  disabled={updateVehicle.isPending || !receiveAdviserName}
+                  data-testid="button-confirm-receive"
+                >
+                  <LogIn className="w-4 h-4 mr-1.5" />
+                  {updateVehicle.isPending ? "Receiving..." : "Confirm Receive"}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -549,6 +636,31 @@ function VehicleList({ list, isLoading, onReceive, updateVehicle }: {
   onReceive: (v: any) => void;
   updateVehicle: any;
 }) {
+  const { toast } = useToast();
+  const [editingAdviserId, setEditingAdviserId] = useState<number | null>(null);
+  const [editingAdviserValue, setEditingAdviserValue] = useState("");
+
+  const startAdviserEdit = (v: any) => {
+    setEditingAdviserId(v.id);
+    setEditingAdviserValue(v.serviceAdviser || v.serviceType || "");
+  };
+
+  const cancelAdviserEdit = () => {
+    setEditingAdviserId(null);
+    setEditingAdviserValue("");
+  };
+
+  const saveAdviser = (vehicleId: number) => {
+    if (!editingAdviserValue) return;
+    updateVehicle.mutate({ id: vehicleId, serviceAdviser: editingAdviserValue }, {
+      onSuccess: () => {
+        toast({ title: "Adviser updated" });
+        setEditingAdviserId(null);
+        setEditingAdviserValue("");
+      }
+    });
+  };
+
   const sorted = [...list].sort((a, b) => {
     const tA = a.appointmentTime || "";
     const tB = b.appointmentTime || "";
@@ -563,49 +675,114 @@ function VehicleList({ list, isLoading, onReceive, updateVehicle }: {
     </div>
   );
 
+  const AdviserCell = ({ v }: { v: any }) => {
+    const isEditing = editingAdviserId === v.id;
+    const canEdit = v.status !== "Today's Appointment";
+    if (isEditing) {
+      return (
+        <div className="flex items-center gap-1 min-w-[180px]">
+          <Select value={editingAdviserValue} onValueChange={setEditingAdviserValue}>
+            <SelectTrigger className="h-7 text-xs flex-1" data-testid={`select-adviser-${v.id}`}>
+              <SelectValue placeholder="Select adviser" />
+            </SelectTrigger>
+            <SelectContent>
+              {SERVICE_ADVISERS.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button size="icon" variant="ghost" className="h-6 w-6 text-green-600 shrink-0" onClick={() => saveAdviser(v.id)} data-testid={`button-save-adviser-${v.id}`}><Check className="w-3.5 h-3.5" /></Button>
+          <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={cancelAdviserEdit} data-testid={`button-cancel-adviser-${v.id}`}><X className="w-3.5 h-3.5" /></Button>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-1 group">
+        <span className="text-xs">{v.serviceAdviser || v.serviceType || '—'}</span>
+        {canEdit && (
+          <button
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-muted"
+            onClick={() => startAdviserEdit(v)}
+            data-testid={`button-edit-adviser-${v.id}`}
+            title="Change adviser"
+          >
+            <Pencil className="w-3 h-3 text-muted-foreground" />
+          </button>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
       {/* Mobile card layout */}
       <div className="flex flex-col gap-3 md:hidden">
-        {sorted.map((v, i) => (
-          <motion.div
-            key={v.id}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.04 }}
-          >
-            <Card className="border border-border/50 shadow-sm">
-              <CardContent className="p-4 space-y-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="font-bold text-base">{v.vehicleNumber}</div>
-                    <div className="text-xs text-muted-foreground">{v.vehicleModel}</div>
+        {sorted.map((v, i) => {
+          const isEditingAdviser = editingAdviserId === v.id;
+          const canEditAdviser = v.status !== "Today's Appointment";
+          return (
+            <motion.div
+              key={v.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.04 }}
+            >
+              <Card className="border border-border/50 shadow-sm">
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="font-bold text-base">{v.vehicleNumber}</div>
+                      <div className="text-xs text-muted-foreground">{v.vehicleModel}</div>
+                    </div>
+                    <StatusBadge status={v.status} />
                   </div>
-                  <StatusBadge status={v.status} />
-                </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                  <div><span className="text-muted-foreground">Customer: </span><span className="font-medium">{v.customerName}</span></div>
-                  <div><span className="text-muted-foreground">Job Card: </span><span className="font-medium">{v.jobCardNumber || '—'}</span></div>
-                  {v.appointmentTime && <div><span className="text-muted-foreground">Time: </span><span>{v.appointmentTime}</span></div>}
-                  {v.ssdNo && <div><span className="text-muted-foreground">SSD No: </span><span>{v.ssdNo}</span></div>}
-                  <div className="col-span-2"><span className="text-muted-foreground">Adviser: </span><span>{v.serviceAdviser || v.serviceType || '—'}</span></div>
-                  {v.serviceOrderType && <div><span className="text-muted-foreground">Order Type: </span><span>{v.serviceOrderType}</span></div>}
-                </div>
-                {v.status === "Today's Appointment" && (
-                  <Button
-                    size="sm"
-                    className="w-full bg-green-600 hover:bg-green-700 text-white h-8 text-xs"
-                    onClick={() => onReceive(v)}
-                    disabled={updateVehicle.isPending}
-                    data-testid={`button-receive-mobile-${v.id}`}
-                  >
-                    <LogIn className="w-3.5 h-3.5 mr-1.5" /> Receive Vehicle
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <div><span className="text-muted-foreground">Customer: </span><span className="font-medium">{v.customerName}</span></div>
+                    <div><span className="text-muted-foreground">Job Card: </span><span className="font-medium">{v.jobCardNumber || '—'}</span></div>
+                    {v.appointmentTime && <div><span className="text-muted-foreground">Time: </span><span>{v.appointmentTime}</span></div>}
+                    {v.ssdNo && <div><span className="text-muted-foreground">SSD No: </span><span>{v.ssdNo}</span></div>}
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Adviser: </span>
+                      {isEditingAdviser ? (
+                        <div className="mt-1 flex items-center gap-1">
+                          <Select value={editingAdviserValue} onValueChange={setEditingAdviserValue}>
+                            <SelectTrigger className="h-7 text-xs flex-1" data-testid={`select-adviser-mobile-${v.id}`}>
+                              <SelectValue placeholder="Select adviser" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SERVICE_ADVISERS.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          <Button size="icon" variant="ghost" className="h-6 w-6 text-green-600 shrink-0" onClick={() => saveAdviser(v.id)}><Check className="w-3.5 h-3.5" /></Button>
+                          <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={cancelAdviserEdit}><X className="w-3.5 h-3.5" /></Button>
+                        </div>
+                      ) : (
+                        <span className="font-medium">
+                          {v.serviceAdviser || v.serviceType || '—'}
+                          {canEditAdviser && (
+                            <button className="ml-1 p-0.5 rounded hover:bg-muted inline-flex" onClick={() => startAdviserEdit(v)} data-testid={`button-edit-adviser-mobile-${v.id}`}>
+                              <Pencil className="w-3 h-3 text-muted-foreground" />
+                            </button>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                    {v.serviceOrderType && <div><span className="text-muted-foreground">Order Type: </span><span>{v.serviceOrderType}</span></div>}
+                  </div>
+                  {v.status === "Today's Appointment" && (
+                    <Button
+                      size="sm"
+                      className="w-full bg-green-600 hover:bg-green-700 text-white h-8 text-xs"
+                      onClick={() => onReceive(v)}
+                      disabled={updateVehicle.isPending}
+                      data-testid={`button-receive-mobile-${v.id}`}
+                    >
+                      <LogIn className="w-3.5 h-3.5 mr-1.5" /> Receive Vehicle
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          );
+        })}
       </div>
 
       {/* Desktop table layout */}
@@ -647,7 +824,7 @@ function VehicleList({ list, isLoading, onReceive, updateVehicle }: {
                       <div className="font-medium">{v.vehicleNumber}</div>
                       <div className="text-xs text-muted-foreground">{v.vehicleModel}</div>
                     </td>
-                    <td className="px-4 py-3 text-xs">{v.serviceAdviser || v.serviceType || '—'}</td>
+                    <td className="px-4 py-3"><AdviserCell v={v} /></td>
                     <td className="px-4 py-3 text-xs">{v.serviceOrderType || '—'}</td>
                     <td className="px-4 py-3"><StatusBadge status={v.status} /></td>
                     <td className="px-4 py-3">

@@ -158,37 +158,26 @@ export async function registerRoutes(
 }
 
 async function seedDatabase() {
-  const existingUsers = await storage.getTechnicians();
-  if (existingUsers.length === 0) {
-    await storage.createUser({
-      username: "reception@test.com",
-      password: "password123",
-      name: "Alice Reception",
-      role: "receptionist"
-    });
-    await storage.createUser({
-      username: "adviser@test.com",
-      password: "password123",
-      name: "Bob Adviser",
-      role: "service_adviser"
-    });
-    await storage.createUser({
-      username: "controller@test.com",
-      password: "password123",
-      name: "Charlie Controller",
-      role: "job_controller"
-    });
-    await storage.createUser({
-      username: "tech1@test.com",
-      password: "password123",
-      name: "Dave Technician",
-      role: "technician"
-    });
-    await storage.createUser({
-      username: "tech2@test.com",
-      password: "password123",
-      name: "Eve Technician",
-      role: "technician"
-    });
+  const existing = await storage.getUserByUsername("reception");
+  if (existing) return;
+
+  const usersToCreate = [
+    { username: "reception",  password: "service123", name: "Receptionist",          role: "receptionist" },
+    { username: "nasiya",     password: "service123", name: "NASIYA NAUSHAD",         role: "service_adviser" },
+    { username: "anjali",     password: "service123", name: "ANJALI PT",              role: "service_adviser" },
+    { username: "jithin",     password: "service123", name: "JITHIN G NAIR",          role: "service_adviser" },
+    { username: "hafiz",      password: "service123", name: "MUHAMMAD HAFIZ",         role: "service_adviser" },
+    { username: "manu",       password: "service123", name: "MANU JOSEPH MARTIN",     role: "service_adviser" },
+    { username: "midhun",     password: "service123", name: "MIDHUN SATYA",           role: "service_adviser" },
+    { username: "minhaj",     password: "service123", name: "MINHAJ BIN JABIR M V",   role: "service_adviser" },
+    { username: "sudhin",     password: "service123", name: "SUDHIN K",               role: "service_adviser" },
+    { username: "yadhu",      password: "service123", name: "YADHU KRISHNA",          role: "service_adviser" },
+    { username: "controller", password: "service123", name: "Job Controller",         role: "job_controller" },
+    { username: "tech1",      password: "service123", name: "Technician 1",           role: "technician" },
+    { username: "tech2",      password: "service123", name: "Technician 2",           role: "technician" },
+  ];
+
+  for (const u of usersToCreate) {
+    await storage.createUser(u);
   }
 }
