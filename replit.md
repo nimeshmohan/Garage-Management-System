@@ -33,8 +33,14 @@ A full-stack car service management web application for Skoda service centers wi
 - **Adviser dashboard**: "Waiting for Adviser" vehicles in pending list; confirm delivery; reopen with mandatory reason
 - **All dashboards**: Search by vehicle/job card/customer + date filter
 
+## Job Controller → Technician Workflow
+- **Trigger**: Vehicle becomes "Inspection Completed" after adviser completes inspection
+- **Controller assigns**: Opens "Assign Technician" dialog showing vehicle details, inspection notes, and each customer complaint as a separate row — each complaint gets its own technician + estimated time
+- **Multi-tech assignment**: Different complaints can be routed to different technicians; stored as JSON in `complaintAssignments` column
+- **After assignment**: Vehicle status → "Work in Progress"; each technician's dashboard automatically shows their assigned vehicle with only their specific complaints and estimated times
+
 ## Data Model (vehicles table)
-Notable fields: `jobCardNumber`, `customerName`, `phone`, `vehicleNumber`, `vehicleModel`, `serviceAdviser`, `serviceOrderType`, `entryType` (Walk-in / Today's Appointment), `appointmentTime`, `ssdNo`, `priority`, `status`, `technicianId`, `totalWorkDuration`, `partsWaitDuration`, `reopenReason`
+Notable fields: `jobCardNumber`, `customerName`, `phone`, `vehicleNumber`, `vehicleModel`, `serviceAdviser`, `serviceOrderType`, `entryType` (Walk-in / Today's Appointment), `appointmentTime`, `ssdNo`, `priority`, `status`, `technicianId`, `complaints` (JSON array of complaint strings), `complaintAssignments` (JSON array of `{complaint, technicianId, estimatedTime}` objects), `serviceNotes`, `totalWorkDuration`, `partsWaitDuration`, `reopenReason`
 
 ## Dropdowns
 - **Service Advisers**: NASIYA NAUSHAD, ANJALI PT, JITHIN G NAIR, MUHAMMAD HAFIZ, MANU JOSEPH MARTIN, MIDHUN SATYA, MINHAJ BIN JABIR M V, SUDHIN K, YADHU KRISHNA

@@ -42,6 +42,7 @@ export const vehicles = pgTable("vehicles", {
   partsNeeded: text("parts_needed"),
   reopenReason: text("reopen_reason"),
   complaints: text("complaints"),
+  complaintAssignments: text("complaint_assignments"),
 
   createdAt: timestamp("created_at").defaultNow(),
   receivedAt: text("received_at"),
