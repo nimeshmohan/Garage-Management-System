@@ -4,6 +4,8 @@ import { CheckCircle, Clock, AlertCircle, Wrench, Package, CalendarClock, CarFro
 export function StatusBadge({ status }: { status: string }) {
   const getStatusConfig = () => {
     switch (status) {
+      case "Waiting for Adviser":
+        return { color: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300", icon: Clock };
       case "Today's Appointment":
         return { color: "bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300", icon: CalendarClock };
       case "Walk-in":

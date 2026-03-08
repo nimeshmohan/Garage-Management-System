@@ -29,7 +29,7 @@ export function TechnicianDashboard() {
   const filteredVehicles = vehicles?.filter(v => {
     const matchesSearch = 
       v.vehicleNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      v.jobCardNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (v.jobCardNumber || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       v.customerName.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesDate = !filterDate || (v.createdAt && format(new Date(v.createdAt), 'yyyy-MM-dd') === filterDate);

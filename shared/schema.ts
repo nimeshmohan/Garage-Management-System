@@ -12,7 +12,7 @@ export const users = pgTable("users", {
 
 export const vehicles = pgTable("vehicles", {
   id: serial("id").primaryKey(),
-  jobCardNumber: text("job_card_number").notNull().unique(),
+  jobCardNumber: text("job_card_number").unique(),
   customerName: text("customer_name").notNull(),
   phone: text("phone").default(""),
   vehicleNumber: text("vehicle_number").notNull(),

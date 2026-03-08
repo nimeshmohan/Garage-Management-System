@@ -1,0 +1,130 @@
+1. Handle Excel Files With Extra Header Rows
+
+Some Excel files may contain extra rows before the actual column headers.
+
+Required Behavior
+
+After the user uploads the Excel file:
+
+Show a prompt or option:
+
+"Which row contains the column headers?"
+
+Options example:
+
+Row 1
+
+Row 2
+
+Row 3
+
+OR provide a checkbox:
+
+"Skip the first row"
+
+The system should then use the selected row as the header row for column mapping.
+
+2. Appointment Time Handling
+
+The Appointment Time column may contain:
+
+Actual time values (example: 10:30 AM)
+
+Text values (example: Morning, After Lunch, Express Service)
+
+Required Behavior
+
+Do not convert or validate the value.
+
+Simply store the value exactly as it appears in the Excel sheet.
+
+3. Job Card Number Handling
+
+For Excel imported appointments:
+
+Job Card Number should be:
+
+Empty / Null
+
+Reason:
+The job card should only be generated when the customer arrives and the receptionist receives the vehicle.
+
+4. Appointment Arrival Workflow
+
+When a vehicle that was imported through appointments arrives at the service center, the receptionist should be able to receive the vehicle.
+
+Add Button
+
+For appointment entries add an action button:
+
+"Receive Vehicle"
+
+When Clicked
+
+Update the vehicle status to:
+
+"Waiting for Adviser"
+
+Then automatically assign the vehicle to the adviser.
+
+Adviser Assignment
+
+The Excel file already contains:
+
+Service Advisor Name
+
+Use this value to automatically assign the vehicle to that same adviser when the receptionist clicks Receive Vehicle.
+
+No need to manually choose the adviser.
+
+5. Dashboard Vehicle Visibility
+
+Currently the dashboard may show all vehicles.
+
+Change this behavior.
+
+Default Dashboard View
+
+Only show vehicles where:
+
+Entry Date = Current Date
+
+This keeps the dashboard clean for daily operations.
+
+Historical Vehicles
+
+Older vehicle entries should be visible only in:
+
+History View
+
+or
+
+Date Filter Search
+
+Allow the receptionist to filter vehicles by:
+
+Date
+
+Vehicle Number
+
+Customer Name
+
+6. Expected Workflow
+
+Receptionist uploads Excel appointment sheet.
+
+System asks which row contains headers (in case of extra rows).
+
+Appointments are imported.
+
+Status = Today's Appointment.
+
+Job Card Number = Empty.
+
+When the customer arrives, receptionist clicks Receive Vehicle.
+
+Status becomes Waiting for Adviser.
+
+Vehicle is automatically assigned to the adviser listed in the Excel file.
+
+Dashboard only shows today’s vehicles, older records go to history.

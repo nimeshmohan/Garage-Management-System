@@ -96,10 +96,10 @@ export class DatabaseStorage implements IStorage {
       }
 
       try {
-        await db.insert(vehicles).values(row);
+        const { jobCardNumber, ...rowWithoutJobCard } = row;
+        await db.insert(vehicles).values({ ...rowWithoutJobCard, jobCardNumber: undefined });
         imported++;
       } catch (e: any) {
-        // Duplicate job card number
         skipped++;
         skippedRows.push(`${row.vehicleNumber} (${row.customerName}) - ${e.message}`);
       }

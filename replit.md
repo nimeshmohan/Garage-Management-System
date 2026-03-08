@@ -19,13 +19,18 @@ A full-stack car service management web application for Skoda service centers wi
 | Customer | — | Public vehicle tracker |
 
 ## Key Features
-- **Walk-in form**: Job card, customer, vehicle number, model (dropdown), service adviser (dropdown), service order type
-- **Excel import**: Upload `.xlsx` file with appointment schedule, preview, duplicate detection, import summary
-  - Columns mapped: Appointment Time, SSD No, Service Advisor Name, Service Order Type, Sell-to Customer Name, License No., Model
+- **Walk-in form**: Job card (optional, auto-generated), customer, vehicle number, model (dropdown), service adviser (dropdown), service order type
+- **Excel import**: Upload `.xlsx` file, header row selector (handles extra header rows), duplicate detection, import summary
+  - Columns: Appointment Time, SSD No, Service Advisor Name, Service Order Type, Sell-to Customer Name, License No., Model
+  - Appointment time stored as-is (text, no conversion)
+  - Job card = null on import; generated when vehicle arrives via "Receive Vehicle"
   - Imported status = "Today's Appointment"; Walk-in status = "Walk-in"
+- **Receive Vehicle**: Receptionist clicks button on appointment → status = "Waiting for Adviser" + auto job card (RCV-{timestamp})
+- **Today-only default view**: Dashboard shows only today's vehicles; "View History" toggle for historical records with date filter
+- **Mobile responsive**: Card layout on mobile, table layout on desktop
 - **Technician timer**: Accurate `Date.now()`-based start/pause/resume; parts wait time dialog
 - **Parts wait tracking**: Records elapsed time when entering wait, stores duration
-- **Adviser dashboard**: Confirm delivery, reopen with mandatory reason (shown in red)
+- **Adviser dashboard**: "Waiting for Adviser" vehicles in pending list; confirm delivery; reopen with mandatory reason
 - **All dashboards**: Search by vehicle/job card/customer + date filter
 
 ## Data Model (vehicles table)

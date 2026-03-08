@@ -1,10 +1,13 @@
 import { useState, useRef } from "react";
-import { useVehicles, useCreateVehicle } from "@/hooks/use-vehicles";
+import { useVehicles, useCreateVehicle, useUpdateVehicle } from "@/hooks/use-vehicles";
 import { format } from "date-fns";
-import { Plus, Users, CheckCircle, Clock, Upload, FileSpreadsheet, X, AlertCircle, CalendarClock, CarFront } from "lucide-react";
+import {
+  Plus, Users, CheckCircle, Clock, Upload, FileSpreadsheet, X,
+  AlertCircle, CalendarClock, CarFront, History, ChevronDown, LogIn
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/status-badge";
@@ -30,15 +33,17 @@ const VEHICLE_MODELS = [
   "SUPERB", "OCTAVIA", "LAURA", "YETI", "RAPID"
 ];
 
-const TODAY = format(new Date(), 'yyyy-MM-dd');
+const todayStr = () => format(new Date(), 'yyyy-MM-dd');
 
 export function ReceptionistDashboard() {
   const { data: vehicles, isLoading } = useVehicles();
   const createVehicle = useCreateVehicle();
+  const updateVehicle = useUpdateVehicle();
   const { toast } = useToast();
 
   const [showWalkInForm, setShowWalkInForm] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDate, setFilterDate] = useState("");
 
@@ -53,7 +58,10 @@ export function ReceptionistDashboard() {
   });
 
   // Excel upload state
+  const [rawExcelRows, setRawExcelRows] = useState<any[][]>([]);
+  const [headerRowIndex, setHeaderRowIndex] = useState(0); // 0-indexed
   const [excelPreview, setExcelPreview] = useState<any[]>([]);
+  const [headerError, setHeaderError] = useState("");
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number; skippedRows: string[] } | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -66,7 +74,6 @@ export function ReceptionistDashboard() {
     createVehicle.mutate({
       ...formData,
       jobCardNumber: jobCard,
-      vehicleModel: formData.vehicleModel,
       serviceType: formData.serviceAdviser,
       priority: "Normal",
       status: "Walk-in",
@@ -80,18 +87,61 @@ export function ReceptionistDashboard() {
     });
   };
 
+  const handleReceiveVehicle = (vehicle: any) => {
+    const jobCard = `RCV-${Date.now()}`;
+    updateVehicle.mutate({
+      id: vehicle.id,
+      status: "Waiting for Adviser",
+      jobCardNumber: jobCard,
+    }, {
+      onSuccess: () => {
+        toast({ title: "Vehicle received", description: `Job card ${jobCard} generated. Assigned to ${vehicle.serviceAdviser || 'adviser'}.` });
+      }
+    });
+  };
+
+  // Parse preview using the selected header row
+  const buildPreview = (rawRows: any[][], headerIdx: number) => {
+    setHeaderError("");
+    if (rawRows.length <= headerIdx) { setHeaderError("Header row number exceeds file length."); setExcelPreview([]); return; }
+
+    const headers: string[] = rawRows[headerIdx].map((h: any) => String(h || "").trim());
+    const required = ["Appointment Time", "SSD No", "Service Advisor Name", "Service Order Type", "Sell-to Customer Name", "License No.", "Model"];
+    const missing = required.filter(col => !headers.includes(col));
+    if (missing.length > 0) {
+      setHeaderError(`Row ${headerIdx + 1} doesn't contain required headers. Missing: ${missing.join(", ")}. Try a different row.`);
+      setExcelPreview([]);
+      return;
+    }
+
+    const dataRows = rawRows.slice(headerIdx + 1);
+    const preview = dataRows
+      .map(row => {
+        const obj: Record<string, any> = {};
+        headers.forEach((h, i) => { obj[h] = row[i] !== undefined ? row[i] : ""; });
+        return obj;
+      })
+      .filter(r => r["License No."] && r["Sell-to Customer Name"])
+      .map(r => ({
+        appointmentTime: String(r["Appointment Time"] ?? ""),
+        ssdNo: String(r["SSD No"] ?? ""),
+        serviceAdviser: String(r["Service Advisor Name"] ?? ""),
+        serviceOrderType: String(r["Service Order Type"] ?? ""),
+        customerName: String(r["Sell-to Customer Name"] ?? ""),
+        vehicleNumber: String(r["License No."] ?? "").trim().toUpperCase(),
+        vehicleModel: String(r["Model"] ?? ""),
+      }));
+
+    setExcelPreview(preview);
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    setFileError("");
-    setExcelPreview([]);
-    setImportResult(null);
+    setFileError(""); setHeaderError(""); setExcelPreview([]); setImportResult(null); setRawExcelRows([]); setHeaderRowIndex(0);
     if (!file) return;
 
     const ext = file.name.split('.').pop()?.toLowerCase();
-    if (ext !== 'xlsx' && ext !== 'xls') {
-      setFileError("Please upload a valid .xlsx or .xls file.");
-      return;
-    }
+    if (ext !== 'xlsx' && ext !== 'xls') { setFileError("Please upload a valid .xlsx or .xls file."); return; }
 
     setExcelFile(file);
     const reader = new FileReader();
@@ -100,43 +150,27 @@ export function ReceptionistDashboard() {
         const data = ev.target?.result;
         const workbook = XLSX.read(data, { type: 'binary' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-
-        // Validate required columns
-        if (rows.length === 0) { setFileError("The file is empty."); return; }
-        const firstRow = rows[0];
-        const required = ["Appointment Time", "SSD No", "Service Advisor Name", "Service Order Type", "Sell-to Customer Name", "License No.", "Model"];
-        const missing = required.filter(col => !(col in firstRow));
-        if (missing.length > 0) {
-          setFileError(`Missing columns: ${missing.join(", ")}`);
-          return;
-        }
-
-        // Filter empty rows and build preview
-        const preview = rows.filter(r => r["License No."] && r["Sell-to Customer Name"]).map(r => ({
-          appointmentTime: String(r["Appointment Time"] || ""),
-          ssdNo: String(r["SSD No"] || ""),
-          serviceAdviser: String(r["Service Advisor Name"] || ""),
-          serviceOrderType: String(r["Service Order Type"] || ""),
-          customerName: String(r["Sell-to Customer Name"] || ""),
-          vehicleNumber: String(r["License No."] || "").trim().toUpperCase(),
-          vehicleModel: String(r["Model"] || ""),
-        }));
-
-        setExcelPreview(preview);
-      } catch {
-        setFileError("Failed to read file. Please check the format.");
-      }
+        const rawRows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
+        if (rawRows.length === 0) { setFileError("The file is empty."); return; }
+        setRawExcelRows(rawRows);
+        // Try row 0 first; if it fails silently, user can change
+        buildPreview(rawRows, 0);
+      } catch { setFileError("Failed to read file. Please check the format."); }
     };
     reader.readAsBinaryString(file);
+  };
+
+  const handleHeaderRowChange = (val: string) => {
+    const idx = parseInt(val) - 1;
+    setHeaderRowIndex(idx);
+    buildPreview(rawExcelRows, idx);
   };
 
   const handleImport = async () => {
     if (!excelPreview.length) return;
     setIsImporting(true);
     try {
-      const rows = excelPreview.map((r, i) => ({
-        jobCardNumber: `APT-${Date.now()}-${i}`,
+      const rows = excelPreview.map(r => ({
         customerName: r.customerName,
         phone: "",
         vehicleNumber: r.vehicleNumber,
@@ -156,186 +190,203 @@ export function ReceptionistDashboard() {
       setImportResult(data);
       queryClient.invalidateQueries({ queryKey: ['/api/vehicles'] });
       toast({ title: `Import complete: ${data.imported} records imported` });
-    } catch {
-      toast({ title: "Import failed", variant: "destructive" });
-    } finally {
-      setIsImporting(false);
-    }
+    } catch { toast({ title: "Import failed", variant: "destructive" }); }
+    finally { setIsImporting(false); }
   };
 
   const resetUpload = () => {
-    setExcelFile(null);
-    setExcelPreview([]);
-    setImportResult(null);
-    setFileError("");
+    setExcelFile(null); setExcelPreview([]); setImportResult(null);
+    setFileError(""); setHeaderError(""); setRawExcelRows([]); setHeaderRowIndex(0);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
+
+  const today = todayStr();
 
   const applyFilters = (list: any[]) => {
     return list.filter(v => {
       const s = searchTerm.toLowerCase();
       const matchesSearch = !s ||
-        v.vehicleNumber.toLowerCase().includes(s) ||
-        v.jobCardNumber.toLowerCase().includes(s) ||
+        v.vehicleNumber?.toLowerCase().includes(s) ||
+        (v.jobCardNumber || "").toLowerCase().includes(s) ||
         v.customerName.toLowerCase().includes(s);
-      const matchesDate = !filterDate || (v.createdAt && format(new Date(v.createdAt), 'yyyy-MM-dd') === filterDate);
+      const dateStr = v.createdAt ? format(new Date(v.createdAt), 'yyyy-MM-dd') : '';
+      const matchesDate = !filterDate || dateStr === filterDate;
       return matchesSearch && matchesDate;
     });
   };
 
-  const todayAppointments = applyFilters(vehicles?.filter(v => v.entryType === "Today's Appointment") || []);
-  const walkIns = applyFilters(vehicles?.filter(v => v.entryType === "Walk-in" || !v.entryType) || []);
-  const allVehicles = applyFilters(vehicles || []);
+  const allVehicles = vehicles || [];
+  const todayVehicles = allVehicles.filter(v => v.createdAt && format(new Date(v.createdAt), 'yyyy-MM-dd') === today);
+  const historyVehicles = allVehicles.filter(v => !v.createdAt || format(new Date(v.createdAt), 'yyyy-MM-dd') !== today);
 
-  const totalVehicles = vehicles?.length || 0;
-  const activeJobs = vehicles?.filter(v => v.status !== "Delivered").length || 0;
-  const completedJobs = vehicles?.filter(v => v.status === "Delivered").length || 0;
+  const displayList = showHistory ? applyFilters(historyVehicles) : applyFilters(todayVehicles);
+  const todayAppointments = applyFilters(todayVehicles.filter(v => v.entryType === "Today's Appointment"));
+  const walkIns = applyFilters(todayVehicles.filter(v => v.entryType === "Walk-in" || !v.entryType));
+
+  const totalToday = todayVehicles.length;
+  const activeJobs = todayVehicles.filter(v => v.status !== "Delivered").length;
+  const completedJobs = todayVehicles.filter(v => v.status === "Delivered").length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-3xl font-display font-bold text-foreground">Receptionist Desk</h2>
-          <p className="text-muted-foreground mt-1">Manage incoming vehicles and appointments.</p>
+          <h2 className="text-2xl sm:text-3xl font-display font-bold text-foreground">Receptionist Desk</h2>
+          <p className="text-muted-foreground text-sm mt-0.5">Manage incoming vehicles and appointments.</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={() => setShowUploadModal(true)} className="h-11 px-5">
-            <Upload className="w-4 h-4 mr-2" /> Upload Appointments
+        <div className="flex gap-2 flex-wrap w-full sm:w-auto">
+          <Button variant="outline" onClick={() => setShowUploadModal(true)} className="flex-1 sm:flex-none h-10 px-4 text-sm" data-testid="button-upload-appointments">
+            <Upload className="w-4 h-4 mr-1.5" /> Upload Appointments
           </Button>
-          <Button onClick={() => setShowWalkInForm(true)} className="h-11 px-6 shadow-md shadow-primary/20">
-            <Plus className="w-5 h-5 mr-2" /> New Walk-in
+          <Button onClick={() => setShowWalkInForm(true)} className="flex-1 sm:flex-none h-10 px-4 text-sm shadow-md shadow-primary/20" data-testid="button-new-walkin">
+            <Plus className="w-4 h-4 mr-1.5" /> New Walk-in
           </Button>
         </div>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="border-none shadow-sm bg-gradient-to-br from-card to-card/50">
-          <CardContent className="p-6 flex items-center">
-            <div className="p-4 rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 mr-4">
-              <Users className="w-8 h-8" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Total Vehicles</p>
-              <h3 className="text-3xl font-display font-bold">{totalVehicles}</h3>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-none shadow-sm bg-gradient-to-br from-card to-card/50">
-          <CardContent className="p-6 flex items-center">
-            <div className="p-4 rounded-xl bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 mr-4">
-              <Clock className="w-8 h-8" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Active Jobs</p>
-              <h3 className="text-3xl font-display font-bold">{activeJobs}</h3>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-none shadow-sm bg-gradient-to-br from-card to-card/50">
-          <CardContent className="p-6 flex items-center">
-            <div className="p-4 rounded-xl bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400 mr-4">
-              <CheckCircle className="w-8 h-8" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Delivered</p>
-              <h3 className="text-3xl font-display font-bold">{completedJobs}</h3>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-3 gap-3 sm:gap-5">
+        {[
+          { label: "Today's Vehicles", value: totalToday, icon: Users, color: "blue" },
+          { label: "Active", value: activeJobs, icon: Clock, color: "orange" },
+          { label: "Delivered", value: completedJobs, icon: CheckCircle, color: "green" },
+        ].map(({ label, value, icon: Icon, color }) => (
+          <Card key={label} className="border-none shadow-sm">
+            <CardContent className="p-3 sm:p-5 flex flex-col sm:flex-row items-center sm:items-start gap-2 sm:gap-4">
+              <div className={`p-2 sm:p-3 rounded-xl bg-${color}-100 text-${color}-600 dark:bg-${color}-900/30 dark:text-${color}-400 shrink-0`}>
+                <Icon className="w-5 h-5 sm:w-7 sm:h-7" />
+              </div>
+              <div className="text-center sm:text-left">
+                <p className="text-xs font-medium text-muted-foreground leading-tight">{label}</p>
+                <h3 className="text-2xl sm:text-3xl font-display font-bold">{value}</h3>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-4">
-        <div className="flex-1">
-          <Input
-            placeholder="Search by vehicle number, job card, or customer name..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full"
-          />
+      {/* Filters + History Toggle */}
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex-1">
+            <Input
+              placeholder="Search vehicle no., customer, job card..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full"
+              data-testid="input-search"
+            />
+          </div>
+          {showHistory && (
+            <div className="w-full sm:w-44">
+              <Input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="w-full" data-testid="input-filter-date" />
+            </div>
+          )}
+          {(searchTerm || filterDate) && (
+            <Button variant="ghost" size="sm" onClick={() => { setSearchTerm(""); setFilterDate(""); }}>
+              <X className="w-4 h-4 mr-1" /> Clear
+            </Button>
+          )}
         </div>
-        <div className="w-full md:w-48">
-          <Input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="w-full" />
-        </div>
-        {(searchTerm || filterDate) && (
-          <Button variant="ghost" onClick={() => { setSearchTerm(""); setFilterDate(""); }}>
-            <X className="w-4 h-4 mr-1" /> Clear
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            {showHistory ? `Showing history (${displayList.length} records)` : `Today — ${format(new Date(), 'MMM dd, yyyy')} (${displayList.length} vehicles)`}
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { setShowHistory(!showHistory); setFilterDate(""); setSearchTerm(""); }}
+            className="text-xs gap-1"
+            data-testid="button-toggle-history"
+          >
+            <History className="w-3.5 h-3.5" />
+            {showHistory ? "Back to Today" : "View History"}
           </Button>
-        )}
+        </div>
       </div>
 
-      {/* Tabbed Vehicle Sections */}
-      <Tabs defaultValue="all" className="w-full">
-        <TabsList className="grid w-full max-w-lg grid-cols-3 mb-4">
-          <TabsTrigger value="appointments" className="flex items-center gap-2">
-            <CalendarClock className="w-4 h-4" /> Today's Appointments ({todayAppointments.length})
-          </TabsTrigger>
-          <TabsTrigger value="walkins" className="flex items-center gap-2">
-            <CarFront className="w-4 h-4" /> Walk-ins ({walkIns.length})
-          </TabsTrigger>
-          <TabsTrigger value="all">All ({allVehicles.length})</TabsTrigger>
-        </TabsList>
-
-        {["appointments", "walkins", "all"].map(tab => {
-          const list = tab === "appointments" ? todayAppointments : tab === "walkins" ? walkIns : allVehicles;
-          return (
-            <TabsContent key={tab} value={tab} className="mt-0">
-              <VehicleTable list={list} isLoading={isLoading} />
-            </TabsContent>
-          );
-        })}
-      </Tabs>
+      {/* Vehicle Sections */}
+      {showHistory ? (
+        <div>
+          <VehicleList list={displayList} isLoading={isLoading} onReceive={handleReceiveVehicle} updateVehicle={updateVehicle} />
+        </div>
+      ) : (
+        <Tabs defaultValue="appointments" className="w-full">
+          <TabsList className="w-full sm:w-auto flex mb-4 h-auto p-1 gap-1">
+            <TabsTrigger value="appointments" className="flex-1 sm:flex-none text-xs sm:text-sm py-1.5 flex items-center gap-1" data-testid="tab-appointments">
+              <CalendarClock className="w-3.5 h-3.5 hidden sm:block" />
+              Appointments ({todayAppointments.length})
+            </TabsTrigger>
+            <TabsTrigger value="walkins" className="flex-1 sm:flex-none text-xs sm:text-sm py-1.5 flex items-center gap-1" data-testid="tab-walkins">
+              <CarFront className="w-3.5 h-3.5 hidden sm:block" />
+              Walk-ins ({walkIns.length})
+            </TabsTrigger>
+            <TabsTrigger value="all" className="flex-1 sm:flex-none text-xs sm:text-sm py-1.5" data-testid="tab-all">
+              All ({applyFilters(todayVehicles).length})
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="appointments" className="mt-0">
+            <VehicleList list={todayAppointments} isLoading={isLoading} onReceive={handleReceiveVehicle} updateVehicle={updateVehicle} />
+          </TabsContent>
+          <TabsContent value="walkins" className="mt-0">
+            <VehicleList list={walkIns} isLoading={isLoading} onReceive={handleReceiveVehicle} updateVehicle={updateVehicle} />
+          </TabsContent>
+          <TabsContent value="all" className="mt-0">
+            <VehicleList list={applyFilters(todayVehicles)} isLoading={isLoading} onReceive={handleReceiveVehicle} updateVehicle={updateVehicle} />
+          </TabsContent>
+        </Tabs>
+      )}
 
       {/* Walk-in Form Dialog */}
       <Dialog open={showWalkInForm} onOpenChange={setShowWalkInForm}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="w-full max-w-[95vw] sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle className="text-2xl">New Walk-in Entry</DialogTitle>
+            <DialogTitle className="text-xl">New Walk-in Entry</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleWalkInSubmit} className="space-y-4 mt-2">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
                 <label className="text-sm font-medium">Job Card # (optional)</label>
-                <Input placeholder="Auto-generated if empty" value={formData.jobCardNumber} onChange={e => setFormData({ ...formData, jobCardNumber: e.target.value })} />
+                <Input placeholder="Auto-generated" value={formData.jobCardNumber} onChange={e => setFormData({ ...formData, jobCardNumber: e.target.value })} data-testid="input-job-card" />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Phone Number</label>
-                <Input value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Phone</label>
+                <Input value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} data-testid="input-phone" />
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <label className="text-sm font-medium">Customer Name *</label>
-              <Input required value={formData.customerName} onChange={e => setFormData({ ...formData, customerName: e.target.value })} />
+              <Input required value={formData.customerName} onChange={e => setFormData({ ...formData, customerName: e.target.value })} data-testid="input-customer-name" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
                 <label className="text-sm font-medium">Vehicle Reg. No *</label>
-                <Input required placeholder="KL01AB1234" value={formData.vehicleNumber} onChange={e => setFormData({ ...formData, vehicleNumber: e.target.value.toUpperCase() })} />
+                <Input required placeholder="KL01AB1234" value={formData.vehicleNumber} onChange={e => setFormData({ ...formData, vehicleNumber: e.target.value.toUpperCase() })} data-testid="input-vehicle-number" />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1">
                 <label className="text-sm font-medium">Model *</label>
-                <Select value={formData.vehicleModel} onValueChange={v => setFormData({ ...formData, vehicleModel: v })} required>
-                  <SelectTrigger><SelectValue placeholder="Select model" /></SelectTrigger>
+                <Select required value={formData.vehicleModel} onValueChange={v => setFormData({ ...formData, vehicleModel: v })}>
+                  <SelectTrigger data-testid="select-vehicle-model"><SelectValue placeholder="Select model" /></SelectTrigger>
                   <SelectContent>{VEHICLE_MODELS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <label className="text-sm font-medium">Service Adviser *</label>
-              <Select value={formData.serviceAdviser} onValueChange={v => setFormData({ ...formData, serviceAdviser: v })} required>
-                <SelectTrigger><SelectValue placeholder="Select adviser" /></SelectTrigger>
+              <Select required value={formData.serviceAdviser} onValueChange={v => setFormData({ ...formData, serviceAdviser: v })}>
+                <SelectTrigger data-testid="select-service-adviser"><SelectValue placeholder="Select adviser" /></SelectTrigger>
                 <SelectContent>{SERVICE_ADVISERS.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <label className="text-sm font-medium">Service Order Type *</label>
-              <Select value={formData.serviceOrderType} onValueChange={v => setFormData({ ...formData, serviceOrderType: v })} required>
-                <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+              <Select required value={formData.serviceOrderType} onValueChange={v => setFormData({ ...formData, serviceOrderType: v })}>
+                <SelectTrigger data-testid="select-order-type"><SelectValue placeholder="Select type" /></SelectTrigger>
                 <SelectContent>{SERVICE_ORDER_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <Button type="submit" className="w-full" disabled={createVehicle.isPending}>
+            <Button type="submit" className="w-full" disabled={createVehicle.isPending} data-testid="button-submit-walkin">
               {createVehicle.isPending ? "Saving..." : "Create Walk-in Entry"}
             </Button>
           </form>
@@ -344,10 +395,10 @@ export function ReceptionistDashboard() {
 
       {/* Excel Upload Modal */}
       <Dialog open={showUploadModal} onOpenChange={(v) => { if (!v) resetUpload(); setShowUploadModal(v); }}>
-        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-full max-w-[95vw] sm:max-w-[860px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl">
-              <FileSpreadsheet className="w-5 h-5 text-green-600" /> Upload Appointment Schedule
+            <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
+              <FileSpreadsheet className="w-5 h-5 text-green-600 shrink-0" /> Upload Appointment Schedule
             </DialogTitle>
           </DialogHeader>
 
@@ -355,109 +406,129 @@ export function ReceptionistDashboard() {
             <div className="space-y-4 mt-2">
               {/* Upload area */}
               <div
-                className="border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                className="border-2 border-dashed border-border rounded-xl p-6 sm:p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
                 onClick={() => fileInputRef.current?.click()}
+                data-testid="upload-area"
               >
-                <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
+                <Upload className="w-8 h-8 sm:w-10 sm:h-10 mx-auto mb-2 text-muted-foreground" />
                 <p className="text-sm font-medium">Click to upload Excel file</p>
-                <p className="text-xs text-muted-foreground mt-1">Supports .xlsx and .xls files</p>
-                <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
+                <p className="text-xs text-muted-foreground mt-1">Supports .xlsx and .xls</p>
+                <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} data-testid="input-file-upload" />
               </div>
 
               {excelFile && (
-                <div className="flex items-center gap-2 text-sm bg-muted/50 p-3 rounded-lg">
-                  <FileSpreadsheet className="w-4 h-4 text-green-600" />
-                  <span className="font-medium">{excelFile.name}</span>
-                  <span className="text-muted-foreground ml-auto">{excelPreview.length} valid rows found</span>
-                  <Button variant="ghost" size="sm" onClick={resetUpload}><X className="w-4 h-4" /></Button>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2 text-sm bg-muted/50 p-3 rounded-lg">
+                    <FileSpreadsheet className="w-4 h-4 text-green-600 shrink-0" />
+                    <span className="font-medium truncate flex-1">{excelFile.name}</span>
+                    <Button variant="ghost" size="sm" onClick={resetUpload} className="shrink-0"><X className="w-4 h-4" /></Button>
+                  </div>
+
+                  {/* Header row selector */}
+                  <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg">
+                    <AlertCircle className="w-4 h-4 text-blue-600 shrink-0" />
+                    <div className="flex-1 text-sm">
+                      <span className="font-medium text-blue-700 dark:text-blue-300">Which row contains the column headers?</span>
+                    </div>
+                    <Select value={String(headerRowIndex + 1)} onValueChange={handleHeaderRowChange}>
+                      <SelectTrigger className="w-24 h-8 text-xs" data-testid="select-header-row">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: Math.min(rawExcelRows.length, 10) }, (_, i) => (
+                          <SelectItem key={i + 1} value={String(i + 1)}>Row {i + 1}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Show sample of selected header row */}
+                  {rawExcelRows.length > 0 && (
+                    <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded overflow-x-auto">
+                      <span className="font-medium">Row {headerRowIndex + 1} preview: </span>
+                      {rawExcelRows[headerRowIndex]?.slice(0, 8).map((h: any, i: number) => (
+                        <span key={i} className="inline-block border border-border/60 rounded px-1.5 py-0.5 mr-1 mb-1 bg-background">{String(h || "—")}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
               {fileError && (
                 <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-lg">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  {fileError}
+                  <AlertCircle className="w-4 h-4 shrink-0" /> {fileError}
+                </div>
+              )}
+              {headerError && (
+                <div className="flex items-center gap-2 text-sm text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/10 p-3 rounded-lg">
+                  <AlertCircle className="w-4 h-4 shrink-0" /> {headerError}
                 </div>
               )}
 
               {/* Preview table */}
               {excelPreview.length > 0 && (
                 <div className="space-y-2">
-                  <h3 className="text-sm font-semibold">Preview ({excelPreview.length} records)</h3>
-                  <div className="overflow-x-auto rounded-lg border border-border max-h-64">
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-muted/50">
+                  <p className="text-sm font-semibold">{excelPreview.length} valid records found</p>
+                  <div className="overflow-x-auto rounded-lg border border-border max-h-52 sm:max-h-64">
+                    <table className="w-full text-xs text-left min-w-[600px]">
+                      <thead className="bg-muted/50 sticky top-0">
                         <tr>
-                          <th className="px-3 py-2">#</th>
-                          <th className="px-3 py-2">Appt. Time</th>
-                          <th className="px-3 py-2">SSD No</th>
-                          <th className="px-3 py-2">Customer</th>
-                          <th className="px-3 py-2">License</th>
-                          <th className="px-3 py-2">Model</th>
-                          <th className="px-3 py-2">Adviser</th>
-                          <th className="px-3 py-2">Order Type</th>
+                          {["#", "Appt. Time", "SSD No", "Customer", "License", "Model", "Adviser", "Order Type"].map(h => (
+                            <th key={h} className="px-3 py-2 whitespace-nowrap">{h}</th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
                         {excelPreview.map((r, i) => (
                           <tr key={i} className="border-t border-border/50 hover:bg-muted/20">
                             <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
-                            <td className="px-3 py-2">{r.appointmentTime}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">{r.appointmentTime}</td>
                             <td className="px-3 py-2">{r.ssdNo}</td>
-                            <td className="px-3 py-2 font-medium">{r.customerName}</td>
+                            <td className="px-3 py-2 font-medium whitespace-nowrap">{r.customerName}</td>
                             <td className="px-3 py-2">{r.vehicleNumber}</td>
                             <td className="px-3 py-2">{r.vehicleModel}</td>
-                            <td className="px-3 py-2">{r.serviceAdviser}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">{r.serviceAdviser}</td>
                             <td className="px-3 py-2">{r.serviceOrderType}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  <Button className="w-full" onClick={handleImport} disabled={isImporting}>
-                    {isImporting ? "Importing..." : `Import ${excelPreview.length} Records`}
+                  <Button className="w-full" onClick={handleImport} disabled={isImporting} data-testid="button-import">
+                    {isImporting ? "Importing..." : `Import ${excelPreview.length} Records as Today's Appointments`}
                   </Button>
                 </div>
               )}
             </div>
           ) : (
-            /* Import result */
             <div className="space-y-4 mt-2">
-              <div className="grid grid-cols-3 gap-4">
-                <Card className="text-center">
-                  <CardContent className="p-4">
-                    <p className="text-2xl font-bold text-green-600">{importResult.imported}</p>
-                    <p className="text-sm text-muted-foreground">Records Imported</p>
-                  </CardContent>
-                </Card>
-                <Card className="text-center">
-                  <CardContent className="p-4">
-                    <p className="text-2xl font-bold text-orange-500">{importResult.skipped}</p>
-                    <p className="text-sm text-muted-foreground">Duplicates Skipped</p>
-                  </CardContent>
-                </Card>
-                <Card className="text-center">
-                  <CardContent className="p-4">
-                    <p className="text-2xl font-bold text-blue-500">{importResult.imported + importResult.skipped}</p>
-                    <p className="text-sm text-muted-foreground">Total Rows</p>
-                  </CardContent>
-                </Card>
+              <div className="grid grid-cols-3 gap-3">
+                <Card className="text-center"><CardContent className="p-4">
+                  <p className="text-2xl font-bold text-green-600">{importResult.imported}</p>
+                  <p className="text-xs text-muted-foreground">Imported</p>
+                </CardContent></Card>
+                <Card className="text-center"><CardContent className="p-4">
+                  <p className="text-2xl font-bold text-orange-500">{importResult.skipped}</p>
+                  <p className="text-xs text-muted-foreground">Skipped</p>
+                </CardContent></Card>
+                <Card className="text-center"><CardContent className="p-4">
+                  <p className="text-2xl font-bold text-blue-500">{importResult.imported + importResult.skipped}</p>
+                  <p className="text-xs text-muted-foreground">Total</p>
+                </CardContent></Card>
               </div>
-
               {importResult.skippedRows.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="text-sm font-semibold text-orange-600">Skipped Records</h3>
-                  <div className="bg-orange-50 dark:bg-orange-900/10 rounded-lg p-3 max-h-40 overflow-y-auto">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-orange-600">Skipped (duplicates or errors)</p>
+                  <div className="bg-orange-50 dark:bg-orange-900/10 rounded-lg p-3 max-h-36 overflow-y-auto">
                     {importResult.skippedRows.map((row, i) => (
                       <div key={i} className="text-xs text-orange-700 dark:text-orange-300 py-0.5">{i + 1}. {row}</div>
                     ))}
                   </div>
                 </div>
               )}
-
               <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={resetUpload}>Upload Another File</Button>
-                <Button className="flex-1" onClick={() => { resetUpload(); setShowUploadModal(false); }}>Done</Button>
+                <Button variant="outline" className="flex-1" onClick={resetUpload}>Upload Another</Button>
+                <Button className="flex-1" onClick={() => { resetUpload(); setShowUploadModal(false); }} data-testid="button-done-import">Done</Button>
               </div>
             </div>
           )}
@@ -467,66 +538,133 @@ export function ReceptionistDashboard() {
   );
 }
 
-function VehicleTable({ list, isLoading }: { list: any[]; isLoading: boolean }) {
+function VehicleList({ list, isLoading, onReceive, updateVehicle }: {
+  list: any[];
+  isLoading: boolean;
+  onReceive: (v: any) => void;
+  updateVehicle: any;
+}) {
   const sorted = [...list].sort((a, b) => {
     const tA = a.appointmentTime || "";
     const tB = b.appointmentTime || "";
     return tA.localeCompare(tB);
   });
 
+  if (isLoading) return <div className="py-10 text-center text-muted-foreground text-sm">Loading...</div>;
+  if (sorted.length === 0) return (
+    <div className="py-12 flex flex-col items-center text-muted-foreground border border-dashed rounded-2xl">
+      <CalendarClock className="w-10 h-10 mb-3 text-muted" />
+      <p>No records found.</p>
+    </div>
+  );
+
   return (
-    <Card className="shadow-lg border-border/50 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm text-left">
-          <thead className="text-xs text-muted-foreground uppercase bg-muted/50">
-            <tr>
-              <th className="px-4 py-3 font-medium">Job Card / Date</th>
-              <th className="px-4 py-3 font-medium">Appt. Time</th>
-              <th className="px-4 py-3 font-medium">Customer</th>
-              <th className="px-4 py-3 font-medium">Vehicle</th>
-              <th className="px-4 py-3 font-medium">Adviser</th>
-              <th className="px-4 py-3 font-medium">Order Type</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">Loading...</td></tr>
-            ) : sorted.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No records found.</td></tr>
-            ) : (
-              sorted.map((v, i) => (
-                <motion.tr
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.03 }}
-                  key={v.id}
-                  className="border-b border-border/50 hover:bg-muted/20 transition-colors"
-                >
-                  <td className="px-4 py-3">
-                    <div className="font-semibold">{v.jobCardNumber}</div>
-                    <div className="text-xs text-muted-foreground">{v.createdAt ? format(new Date(v.createdAt), 'MMM dd, yyyy') : '-'}</div>
-                  </td>
-                  <td className="px-4 py-3 text-sm">{v.appointmentTime || '-'}</td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium">{v.customerName}</div>
-                    <div className="text-xs text-muted-foreground">{v.phone || v.ssdNo || ''}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium">{v.vehicleNumber}</div>
+    <>
+      {/* Mobile card layout */}
+      <div className="flex flex-col gap-3 md:hidden">
+        {sorted.map((v, i) => (
+          <motion.div
+            key={v.id}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.04 }}
+          >
+            <Card className="border border-border/50 shadow-sm">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="font-bold text-base">{v.vehicleNumber}</div>
                     <div className="text-xs text-muted-foreground">{v.vehicleModel}</div>
-                  </td>
-                  <td className="px-4 py-3 text-xs">{v.serviceAdviser || v.serviceType || '-'}</td>
-                  <td className="px-4 py-3 text-xs">{v.serviceOrderType || '-'}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={v.status} />
-                  </td>
-                </motion.tr>
-              ))
-            )}
-          </tbody>
-        </table>
+                  </div>
+                  <StatusBadge status={v.status} />
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div><span className="text-muted-foreground">Customer: </span><span className="font-medium">{v.customerName}</span></div>
+                  <div><span className="text-muted-foreground">Job Card: </span><span className="font-medium">{v.jobCardNumber || '—'}</span></div>
+                  {v.appointmentTime && <div><span className="text-muted-foreground">Time: </span><span>{v.appointmentTime}</span></div>}
+                  {v.ssdNo && <div><span className="text-muted-foreground">SSD No: </span><span>{v.ssdNo}</span></div>}
+                  <div className="col-span-2"><span className="text-muted-foreground">Adviser: </span><span>{v.serviceAdviser || v.serviceType || '—'}</span></div>
+                  {v.serviceOrderType && <div><span className="text-muted-foreground">Order Type: </span><span>{v.serviceOrderType}</span></div>}
+                </div>
+                {v.status === "Today's Appointment" && (
+                  <Button
+                    size="sm"
+                    className="w-full bg-green-600 hover:bg-green-700 text-white h-8 text-xs"
+                    onClick={() => onReceive(v)}
+                    disabled={updateVehicle.isPending}
+                    data-testid={`button-receive-mobile-${v.id}`}
+                  >
+                    <LogIn className="w-3.5 h-3.5 mr-1.5" /> Receive Vehicle
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        ))}
       </div>
-    </Card>
+
+      {/* Desktop table layout */}
+      <div className="hidden md:block">
+        <Card className="shadow-sm border-border/50 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-muted-foreground uppercase bg-muted/50">
+                <tr>
+                  <th className="px-4 py-3">Job Card / Date</th>
+                  <th className="px-4 py-3">Time</th>
+                  <th className="px-4 py-3">Customer</th>
+                  <th className="px-4 py-3">Vehicle</th>
+                  <th className="px-4 py-3">Adviser</th>
+                  <th className="px-4 py-3">Order Type</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((v, i) => (
+                  <motion.tr
+                    key={v.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.03 }}
+                    className="border-b border-border/50 hover:bg-muted/20 transition-colors"
+                  >
+                    <td className="px-4 py-3">
+                      <div className="font-semibold text-xs">{v.jobCardNumber || <span className="text-muted-foreground italic">Pending</span>}</div>
+                      <div className="text-xs text-muted-foreground">{v.createdAt ? format(new Date(v.createdAt), 'MMM dd') : '—'}</div>
+                    </td>
+                    <td className="px-4 py-3 text-sm">{v.appointmentTime || '—'}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium">{v.customerName}</div>
+                      <div className="text-xs text-muted-foreground">{v.ssdNo || v.phone || ''}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium">{v.vehicleNumber}</div>
+                      <div className="text-xs text-muted-foreground">{v.vehicleModel}</div>
+                    </td>
+                    <td className="px-4 py-3 text-xs">{v.serviceAdviser || v.serviceType || '—'}</td>
+                    <td className="px-4 py-3 text-xs">{v.serviceOrderType || '—'}</td>
+                    <td className="px-4 py-3"><StatusBadge status={v.status} /></td>
+                    <td className="px-4 py-3">
+                      {v.status === "Today's Appointment" && (
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700 text-white h-7 px-3 text-xs whitespace-nowrap"
+                          onClick={() => onReceive(v)}
+                          disabled={updateVehicle.isPending}
+                          data-testid={`button-receive-${v.id}`}
+                        >
+                          <LogIn className="w-3 h-3 mr-1" /> Receive
+                        </Button>
+                      )}
+                    </td>
+                  </motion.tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+    </>
   );
 }

@@ -29,7 +29,7 @@ export function AdviserDashboard() {
   const filteredVehicles = vehicles?.filter(v => {
     const matchesSearch = 
       v.vehicleNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      v.jobCardNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (v.jobCardNumber || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       v.customerName.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesDate = !filterDate || (v.createdAt && format(new Date(v.createdAt), 'yyyy-MM-dd') === filterDate);
@@ -37,8 +37,9 @@ export function AdviserDashboard() {
     return matchesSearch && matchesDate;
   }) || [];
 
-  const pendingInspections = filteredVehicles.filter(v => v.status === "Vehicle Received" || v.status === "Ready for Delivery");
-  const history = filteredVehicles.filter(v => v.status !== "Vehicle Received" && v.status !== "Ready for Delivery");
+  const ACTIVE_STATUSES = ["Waiting for Adviser", "Vehicle Received", "Ready for Delivery"];
+  const pendingInspections = filteredVehicles.filter(v => ACTIVE_STATUSES.includes(v.status));
+  const history = filteredVehicles.filter(v => !ACTIVE_STATUSES.includes(v.status));
 
   const handleDeliver = (id: number) => {
     updateVehicle.mutate({
@@ -106,7 +107,7 @@ export function AdviserDashboard() {
         </div>
         
         <div className="bg-muted/50 p-3 rounded-lg text-sm mb-6 space-y-2">
-          <div className="flex justify-between"><span className="text-muted-foreground">Job Card:</span> <span className="font-medium">{v.jobCardNumber}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Job Card:</span> <span className="font-medium">{v.jobCardNumber || <em className="text-muted-foreground text-xs">Pending arrival</em>}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Customer:</span> <span className="font-medium">{v.customerName}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Work Time:</span> <span className="font-medium">{formatDuration(v.totalWorkDuration || 0)}</span></div>
           {v.partsWaitDuration > 0 && (
