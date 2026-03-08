@@ -88,14 +88,19 @@ export function ReceptionistDashboard() {
   };
 
   const handleReceiveVehicle = (vehicle: any) => {
-    const jobCard = `RCV-${Date.now()}`;
+    const jobCard = vehicle.ssdNo || undefined;
     updateVehicle.mutate({
       id: vehicle.id,
       status: "Waiting for Adviser",
-      jobCardNumber: jobCard,
+      ...(jobCard ? { jobCardNumber: jobCard } : {}),
     }, {
       onSuccess: () => {
-        toast({ title: "Vehicle received", description: `Job card ${jobCard} generated. Assigned to ${vehicle.serviceAdviser || 'adviser'}.` });
+        toast({
+          title: "Vehicle received",
+          description: jobCard
+            ? `Assigned to ${vehicle.serviceAdviser || 'adviser'}. Job card: ${jobCard}`
+            : `Assigned to ${vehicle.serviceAdviser || 'adviser'}. Adviser will enter the job card number.`,
+        });
       }
     });
   };

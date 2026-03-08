@@ -108,6 +108,16 @@ export async function registerRoutes(
     try {
       const id = parseInt(req.params.id);
       const input = api.vehicles.update.input.parse(req.body);
+
+      // Duplicate job card number check
+      if (input.jobCardNumber) {
+        const all = await storage.getVehicles();
+        const duplicate = all.find(v => v.jobCardNumber === input.jobCardNumber && v.id !== id);
+        if (duplicate) {
+          return res.status(400).json({ message: `Job card number "${input.jobCardNumber}" is already assigned to another vehicle (${duplicate.vehicleNumber}).` });
+        }
+      }
+
       const vehicle = await storage.updateVehicle(id, input);
       res.json(vehicle);
     } catch (e) {
