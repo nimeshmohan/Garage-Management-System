@@ -91,7 +91,21 @@ export function ReceptionistDashboard() {
 
   const handleOpenReceiveDialog = (vehicle: any) => {
     setReceiveDialogVehicle(vehicle);
-    setReceiveAdviserName(vehicle.serviceAdviser || "");
+    const raw = (vehicle.serviceAdviser || "").trim().toLowerCase();
+    // Try exact → case-insensitive exact → first-word / contains match
+    const matched =
+      SERVICE_ADVISERS.find(a => a === vehicle.serviceAdviser) ||
+      SERVICE_ADVISERS.find(a => a.toLowerCase() === raw) ||
+      SERVICE_ADVISERS.find(a =>
+        raw && (
+          a.toLowerCase().startsWith(raw) ||
+          raw.startsWith(a.toLowerCase().split(" ")[0]) ||
+          a.toLowerCase().includes(raw) ||
+          raw.includes(a.toLowerCase().split(" ")[0])
+        )
+      ) ||
+      "";
+    setReceiveAdviserName(matched);
   };
 
   const handleConfirmReceive = () => {
@@ -237,9 +251,9 @@ export function ReceptionistDashboard() {
   const todayAppointments = applyFilters(todayVehicles.filter(v => v.entryType === "Today's Appointment"));
   const walkIns = applyFilters(todayVehicles.filter(v => v.entryType === "Walk-in" || !v.entryType));
 
-  const totalToday = todayVehicles.length;
-  const activeJobs = todayVehicles.filter(v => v.status !== "Delivered").length;
-  const completedJobs = todayVehicles.filter(v => v.status === "Delivered").length;
+  const totalVehicles = allVehicles.length;
+  const totalReceived = allVehicles.filter(v => v.status !== "Today's Appointment").length;
+  const totalDelivered = allVehicles.filter(v => v.status === "Delivered").length;
 
   return (
     <div className="space-y-5">
@@ -262,9 +276,9 @@ export function ReceptionistDashboard() {
       {/* Summary Cards */}
       <div className="grid grid-cols-3 gap-3 sm:gap-5">
         {[
-          { label: "Today's Vehicles", value: totalToday, icon: Users, color: "blue" },
-          { label: "Active", value: activeJobs, icon: Clock, color: "orange" },
-          { label: "Delivered", value: completedJobs, icon: CheckCircle, color: "green" },
+          { label: "Total Vehicles", value: totalVehicles, icon: Users, color: "blue" },
+          { label: "Total Received", value: totalReceived, icon: Clock, color: "orange" },
+          { label: "Total Delivered", value: totalDelivered, icon: CheckCircle, color: "green" },
         ].map(({ label, value, icon: Icon, color }) => (
           <Card key={label} className="border-none shadow-sm">
             <CardContent className="p-3 sm:p-5 flex flex-col sm:flex-row items-center sm:items-start gap-2 sm:gap-4">
@@ -459,15 +473,25 @@ export function ReceptionistDashboard() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Change Service Adviser</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Service Adviser</label>
+                  {!receiveAdviserName && (
+                    <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Selection required</span>
+                  )}
+                </div>
                 <Select value={receiveAdviserName} onValueChange={setReceiveAdviserName}>
-                  <SelectTrigger data-testid="select-receive-adviser">
-                    <SelectValue placeholder="Select adviser" />
+                  <SelectTrigger data-testid="select-receive-adviser" className={!receiveAdviserName ? "border-amber-400 dark:border-amber-600" : ""}>
+                    <SelectValue placeholder="Select adviser to assign" />
                   </SelectTrigger>
                   <SelectContent>
                     {SERVICE_ADVISERS.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  {receiveAdviserName
+                    ? "Pre-matched from import — change only if needed."
+                    : `Original value "${receiveDialogVehicle?.serviceAdviser}" didn't match any adviser. Please select manually.`}
+                </p>
               </div>
 
               <div className="flex gap-2 pt-1">
