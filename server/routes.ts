@@ -77,7 +77,15 @@ export async function registerRoutes(
 
   // Vehicles Routes
   app.get(api.vehicles.list.path, async (req, res) => {
-    const vehiclesList = await storage.getVehicles();
+    const userId = (req.session as any).userId;
+    const sessionUser = userId ? await storage.getUser(userId) : null;
+    let vehiclesList = await storage.getVehicles();
+    if (sessionUser?.role === 'service_adviser') {
+      vehiclesList = vehiclesList.filter(v =>
+        v.serviceAdviser === sessionUser.name &&
+        v.status !== "Today's Appointment"
+      );
+    }
     res.json(vehiclesList);
   });
 
@@ -115,6 +123,14 @@ export async function registerRoutes(
         const duplicate = all.find(v => v.jobCardNumber === input.jobCardNumber && v.id !== id);
         if (duplicate) {
           return res.status(400).json({ message: `Job card number "${input.jobCardNumber}" is already assigned to another vehicle (${duplicate.vehicleNumber}).` });
+        }
+      }
+
+      // Auto-record receivedAt when vehicle is first received
+      if (input.status === "Waiting for Adviser") {
+        const existing = await storage.getVehicle(id);
+        if (existing && !existing.receivedAt) {
+          (input as any).receivedAt = new Date().toISOString();
         }
       }
 

@@ -3,7 +3,7 @@ import { useVehicles, useCreateVehicle, useUpdateVehicle } from "@/hooks/use-veh
 import { format } from "date-fns";
 import {
   Plus, Users, CheckCircle, Clock, Upload, FileSpreadsheet, X,
-  AlertCircle, CalendarClock, CarFront, History, LogIn, Pencil, Check
+  AlertCircle, CalendarClock, CarFront, History, LogIn, Pencil
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -452,10 +452,14 @@ export function ReceptionistDashboard() {
                     <p className="font-medium">{receiveDialogVehicle.phone}</p>
                   </div>
                 )}
+                <div className="col-span-2 border-t border-border/40 pt-2 mt-1">
+                  <p className="text-xs text-muted-foreground mb-0.5">Assigned Service Adviser</p>
+                  <p className="font-bold text-base text-primary">{receiveDialogVehicle.serviceAdviser || '—'}</p>
+                </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Service Adviser</label>
+                <label className="text-sm font-medium">Change Service Adviser</label>
                 <Select value={receiveAdviserName} onValueChange={setReceiveAdviserName}>
                   <SelectTrigger data-testid="select-receive-adviser">
                     <SelectValue placeholder="Select adviser" />
@@ -637,26 +641,32 @@ function VehicleList({ list, isLoading, onReceive, updateVehicle }: {
   updateVehicle: any;
 }) {
   const { toast } = useToast();
-  const [editingAdviserId, setEditingAdviserId] = useState<number | null>(null);
-  const [editingAdviserValue, setEditingAdviserValue] = useState("");
 
-  const startAdviserEdit = (v: any) => {
-    setEditingAdviserId(v.id);
-    setEditingAdviserValue(v.serviceAdviser || v.serviceType || "");
+  const [editVehicle, setEditVehicle] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({ serviceAdviser: "", serviceOrderType: "", phone: "", jobCardNumber: "" });
+
+  const openEdit = (v: any) => {
+    setEditVehicle(v);
+    setEditForm({
+      serviceAdviser: v.serviceAdviser || "",
+      serviceOrderType: v.serviceOrderType || "",
+      phone: v.phone || "",
+      jobCardNumber: v.jobCardNumber || "",
+    });
   };
 
-  const cancelAdviserEdit = () => {
-    setEditingAdviserId(null);
-    setEditingAdviserValue("");
-  };
-
-  const saveAdviser = (vehicleId: number) => {
-    if (!editingAdviserValue) return;
-    updateVehicle.mutate({ id: vehicleId, serviceAdviser: editingAdviserValue }, {
+  const saveEdit = () => {
+    if (!editVehicle) return;
+    updateVehicle.mutate({
+      id: editVehicle.id,
+      serviceAdviser: editForm.serviceAdviser || undefined,
+      serviceOrderType: editForm.serviceOrderType || undefined,
+      phone: editForm.phone,
+      jobCardNumber: editForm.jobCardNumber || null,
+    }, {
       onSuccess: () => {
-        toast({ title: "Adviser updated" });
-        setEditingAdviserId(null);
-        setEditingAdviserValue("");
+        toast({ title: "Details updated" });
+        setEditVehicle(null);
       }
     });
   };
@@ -675,49 +685,62 @@ function VehicleList({ list, isLoading, onReceive, updateVehicle }: {
     </div>
   );
 
-  const AdviserCell = ({ v }: { v: any }) => {
-    const isEditing = editingAdviserId === v.id;
-    const canEdit = v.status !== "Today's Appointment";
-    if (isEditing) {
-      return (
-        <div className="flex items-center gap-1 min-w-[180px]">
-          <Select value={editingAdviserValue} onValueChange={setEditingAdviserValue}>
-            <SelectTrigger className="h-7 text-xs flex-1" data-testid={`select-adviser-${v.id}`}>
-              <SelectValue placeholder="Select adviser" />
-            </SelectTrigger>
-            <SelectContent>
-              {SERVICE_ADVISERS.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Button size="icon" variant="ghost" className="h-6 w-6 text-green-600 shrink-0" onClick={() => saveAdviser(v.id)} data-testid={`button-save-adviser-${v.id}`}><Check className="w-3.5 h-3.5" /></Button>
-          <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={cancelAdviserEdit} data-testid={`button-cancel-adviser-${v.id}`}><X className="w-3.5 h-3.5" /></Button>
-        </div>
-      );
-    }
-    return (
-      <div className="flex items-center gap-1 group">
-        <span className="text-xs">{v.serviceAdviser || v.serviceType || '—'}</span>
-        {canEdit && (
-          <button
-            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-muted"
-            onClick={() => startAdviserEdit(v)}
-            data-testid={`button-edit-adviser-${v.id}`}
-            title="Change adviser"
-          >
-            <Pencil className="w-3 h-3 text-muted-foreground" />
-          </button>
-        )}
-      </div>
-    );
-  };
-
   return (
     <>
+      {/* Edit Details Dialog */}
+      <Dialog open={!!editVehicle} onOpenChange={(open) => { if (!open) setEditVehicle(null); }}>
+        <DialogContent className="w-full max-w-[95vw] sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-4 h-4" /> Edit Vehicle Details
+            </DialogTitle>
+          </DialogHeader>
+          {editVehicle && (
+            <div className="space-y-4 mt-2">
+              <div className="bg-muted/40 rounded-lg p-3 text-sm">
+                <span className="font-bold">{editVehicle.vehicleNumber}</span>
+                <span className="text-muted-foreground ml-2">{editVehicle.vehicleModel}</span>
+                <span className="text-muted-foreground ml-2">· {editVehicle.customerName}</span>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Service Adviser</label>
+                <Select value={editForm.serviceAdviser} onValueChange={v => setEditForm(f => ({ ...f, serviceAdviser: v }))}>
+                  <SelectTrigger data-testid="select-edit-adviser"><SelectValue placeholder="Select adviser" /></SelectTrigger>
+                  <SelectContent>{SERVICE_ADVISERS.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Service Order Type</label>
+                <Select value={editForm.serviceOrderType} onValueChange={v => setEditForm(f => ({ ...f, serviceOrderType: v }))}>
+                  <SelectTrigger data-testid="select-edit-order-type"><SelectValue placeholder="Select type" /></SelectTrigger>
+                  <SelectContent>{SERVICE_ORDER_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Phone</label>
+                  <Input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} data-testid="input-edit-phone" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Job Card #</label>
+                  <Input value={editForm.jobCardNumber} onChange={e => setEditForm(f => ({ ...f, jobCardNumber: e.target.value }))} data-testid="input-edit-jobcard" />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button variant="outline" className="flex-1" onClick={() => setEditVehicle(null)}>Cancel</Button>
+                <Button className="flex-1" onClick={saveEdit} disabled={updateVehicle.isPending} data-testid="button-save-edit">
+                  {updateVehicle.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Mobile card layout */}
       <div className="flex flex-col gap-3 md:hidden">
         {sorted.map((v, i) => {
-          const isEditingAdviser = editingAdviserId === v.id;
-          const canEditAdviser = v.status !== "Today's Appointment";
+          const isReceived = v.status !== "Today's Appointment";
           return (
             <motion.div
               key={v.id}
@@ -737,47 +760,41 @@ function VehicleList({ list, isLoading, onReceive, updateVehicle }: {
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                     <div><span className="text-muted-foreground">Customer: </span><span className="font-medium">{v.customerName}</span></div>
                     <div><span className="text-muted-foreground">Job Card: </span><span className="font-medium">{v.jobCardNumber || '—'}</span></div>
-                    {v.appointmentTime && <div><span className="text-muted-foreground">Time: </span><span>{v.appointmentTime}</span></div>}
-                    {v.ssdNo && <div><span className="text-muted-foreground">SSD No: </span><span>{v.ssdNo}</span></div>}
-                    <div className="col-span-2">
-                      <span className="text-muted-foreground">Adviser: </span>
-                      {isEditingAdviser ? (
-                        <div className="mt-1 flex items-center gap-1">
-                          <Select value={editingAdviserValue} onValueChange={setEditingAdviserValue}>
-                            <SelectTrigger className="h-7 text-xs flex-1" data-testid={`select-adviser-mobile-${v.id}`}>
-                              <SelectValue placeholder="Select adviser" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {SERVICE_ADVISERS.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                          <Button size="icon" variant="ghost" className="h-6 w-6 text-green-600 shrink-0" onClick={() => saveAdviser(v.id)}><Check className="w-3.5 h-3.5" /></Button>
-                          <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={cancelAdviserEdit}><X className="w-3.5 h-3.5" /></Button>
-                        </div>
-                      ) : (
-                        <span className="font-medium">
-                          {v.serviceAdviser || v.serviceType || '—'}
-                          {canEditAdviser && (
-                            <button className="ml-1 p-0.5 rounded hover:bg-muted inline-flex" onClick={() => startAdviserEdit(v)} data-testid={`button-edit-adviser-mobile-${v.id}`}>
-                              <Pencil className="w-3 h-3 text-muted-foreground" />
-                            </button>
-                          )}
-                        </span>
-                      )}
-                    </div>
-                    {v.serviceOrderType && <div><span className="text-muted-foreground">Order Type: </span><span>{v.serviceOrderType}</span></div>}
+                    {v.appointmentTime && <div><span className="text-muted-foreground">Appt: </span><span>{v.appointmentTime}</span></div>}
+                    {v.ssdNo && <div><span className="text-muted-foreground">SSD: </span><span>{v.ssdNo}</span></div>}
+                    <div className="col-span-2"><span className="text-muted-foreground">Adviser: </span><span className="font-medium">{v.serviceAdviser || '—'}</span></div>
+                    {v.serviceOrderType && <div><span className="text-muted-foreground">Order: </span><span>{v.serviceOrderType}</span></div>}
+                    {v.receivedAt && (
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground">Received: </span>
+                        <span className="font-medium text-green-700 dark:text-green-400">{format(new Date(v.receivedAt), 'HH:mm, dd MMM yyyy')}</span>
+                      </div>
+                    )}
                   </div>
-                  {v.status === "Today's Appointment" && (
-                    <Button
-                      size="sm"
-                      className="w-full bg-green-600 hover:bg-green-700 text-white h-8 text-xs"
-                      onClick={() => onReceive(v)}
-                      disabled={updateVehicle.isPending}
-                      data-testid={`button-receive-mobile-${v.id}`}
-                    >
-                      <LogIn className="w-3.5 h-3.5 mr-1.5" /> Receive Vehicle
-                    </Button>
-                  )}
+                  <div className="flex gap-2">
+                    {v.status === "Today's Appointment" && (
+                      <Button
+                        size="sm"
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white h-8 text-xs"
+                        onClick={() => onReceive(v)}
+                        disabled={updateVehicle.isPending}
+                        data-testid={`button-receive-mobile-${v.id}`}
+                      >
+                        <LogIn className="w-3.5 h-3.5 mr-1.5" /> Receive Vehicle
+                      </Button>
+                    )}
+                    {isReceived && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 h-8 text-xs"
+                        onClick={() => openEdit(v)}
+                        data-testid={`button-edit-details-mobile-${v.id}`}
+                      >
+                        <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit Details
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>
@@ -797,51 +814,72 @@ function VehicleList({ list, isLoading, onReceive, updateVehicle }: {
                   <th className="px-4 py-3">Customer</th>
                   <th className="px-4 py-3">Vehicle</th>
                   <th className="px-4 py-3">Adviser</th>
-                  <th className="px-4 py-3">Order Type</th>
+                  <th className="px-4 py-3">Received</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((v, i) => (
-                  <motion.tr
-                    key={v.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.03 }}
-                    className="border-b border-border/50 hover:bg-muted/20 transition-colors"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-xs">{v.jobCardNumber || <span className="text-muted-foreground italic">Pending</span>}</div>
-                      <div className="text-xs text-muted-foreground">{v.createdAt ? format(new Date(v.createdAt), 'MMM dd') : '—'}</div>
-                    </td>
-                    <td className="px-4 py-3 text-sm">{v.appointmentTime || '—'}</td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{v.customerName}</div>
-                      <div className="text-xs text-muted-foreground">{v.ssdNo || v.phone || ''}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{v.vehicleNumber}</div>
-                      <div className="text-xs text-muted-foreground">{v.vehicleModel}</div>
-                    </td>
-                    <td className="px-4 py-3"><AdviserCell v={v} /></td>
-                    <td className="px-4 py-3 text-xs">{v.serviceOrderType || '—'}</td>
-                    <td className="px-4 py-3"><StatusBadge status={v.status} /></td>
-                    <td className="px-4 py-3">
-                      {v.status === "Today's Appointment" && (
-                        <Button
-                          size="sm"
-                          className="bg-green-600 hover:bg-green-700 text-white h-7 px-3 text-xs whitespace-nowrap"
-                          onClick={() => onReceive(v)}
-                          disabled={updateVehicle.isPending}
-                          data-testid={`button-receive-${v.id}`}
-                        >
-                          <LogIn className="w-3 h-3 mr-1" /> Receive
-                        </Button>
-                      )}
-                    </td>
-                  </motion.tr>
-                ))}
+                {sorted.map((v, i) => {
+                  const isReceived = v.status !== "Today's Appointment";
+                  return (
+                    <motion.tr
+                      key={v.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.03 }}
+                      className="border-b border-border/50 hover:bg-muted/20 transition-colors"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-xs">{v.jobCardNumber || <span className="text-muted-foreground italic">Pending</span>}</div>
+                        <div className="text-xs text-muted-foreground">{v.createdAt ? format(new Date(v.createdAt), 'MMM dd') : '—'}</div>
+                      </td>
+                      <td className="px-4 py-3 text-sm">{v.appointmentTime || '—'}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{v.customerName}</div>
+                        <div className="text-xs text-muted-foreground">{v.ssdNo || v.phone || ''}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{v.vehicleNumber}</div>
+                        <div className="text-xs text-muted-foreground">{v.vehicleModel}</div>
+                      </td>
+                      <td className="px-4 py-3 text-xs">{v.serviceAdviser || v.serviceType || '—'}</td>
+                      <td className="px-4 py-3 text-xs">
+                        {v.receivedAt
+                          ? <span className="text-green-700 dark:text-green-400 font-medium">{format(new Date(v.receivedAt), 'HH:mm, dd MMM')}</span>
+                          : <span className="text-muted-foreground">—</span>
+                        }
+                      </td>
+                      <td className="px-4 py-3"><StatusBadge status={v.status} /></td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-1">
+                          {!isReceived && (
+                            <Button
+                              size="sm"
+                              className="bg-green-600 hover:bg-green-700 text-white h-7 px-3 text-xs whitespace-nowrap"
+                              onClick={() => onReceive(v)}
+                              disabled={updateVehicle.isPending}
+                              data-testid={`button-receive-${v.id}`}
+                            >
+                              <LogIn className="w-3 h-3 mr-1" /> Receive
+                            </Button>
+                          )}
+                          {isReceived && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-3 text-xs"
+                              onClick={() => openEdit(v)}
+                              data-testid={`button-edit-details-${v.id}`}
+                            >
+                              <Pencil className="w-3 h-3 mr-1" /> Edit
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </motion.tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

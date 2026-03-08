@@ -43,6 +43,7 @@ export const vehicles = pgTable("vehicles", {
   reopenReason: text("reopen_reason"),
 
   createdAt: timestamp("created_at").defaultNow(),
+  receivedAt: text("received_at"),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
