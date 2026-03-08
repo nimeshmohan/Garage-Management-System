@@ -128,6 +128,19 @@ export async function registerRoutes(
     res.json(vehicle);
   });
 
+  app.post('/api/vehicles/bulk-import', async (req, res) => {
+    try {
+      const rows = req.body;
+      if (!Array.isArray(rows)) {
+        return res.status(400).json({ message: "Expected array of vehicle rows" });
+      }
+      const result = await storage.bulkImportVehicles(rows);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "Import failed" });
+    }
+  });
+
   // Seed DB with mock users
   seedDatabase().catch(console.error);
 
