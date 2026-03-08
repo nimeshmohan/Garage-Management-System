@@ -1,0 +1,98 @@
+Workflow and Dashboard Updates
+1. Status Change After Advisor Inspection
+
+After the Advisor completes the inspection, the vehicle status should NOT immediately change to "Work in Progress."
+
+Instead, the status should change to "Waiting for Job Allocation."
+
+2. New Menu Tab
+
+Add a new menu tab in the dashboard titled:
+
+"Waiting for Job Allocation"
+
+This tab should appear together with the existing tabs:
+
+Pending Inspection
+
+Waiting for Job Allocation
+
+Work in Progress
+
+Pending Final Inspection
+
+Reopened
+
+Delivered
+
+History
+
+3. History Section
+
+In the History tab, display all vehicles from the current month only.
+
+Technician Dashboard Changes
+4. Rename Waiting for Parts
+
+In the Technician Dashboard, rename the status/button:
+
+Waiting for Parts → Job Stop
+
+5. Job Stop Function
+
+When the Job Stop button is clicked:
+
+A dialog box should appear
+
+The dialog must contain a field:
+
+Reason for Stop
+
+The technician must enter the reason for stopping the job.
+
+6. Stop Time Tracking
+
+Stop time does not need to be tracked.
+
+Only the reason for job stoppage needs to be recorded.
+
+Job Controller Workflow
+7. Job Stop Notification to Job Controller
+
+When a Technician stops a job:
+
+The vehicle/job card should immediately appear in the Job Controller Dashboard.
+
+The status must update across all dashboards (Advisor, Technician, Reception, Job Controller).
+
+8. Job Stoppage Menu
+
+In the Job Controller Dashboard, create a menu tab called:
+
+"Job Stoppage"
+
+All job-stopped vehicles/cards should appear in this section.
+
+9. Reassign Technician
+
+The Job Controller should be able to:
+
+Review the stopped job
+
+Reassign the job to another technician if required
+
+Job History Tracking in Job Controller
+
+Each job card in the Job Controller Dashboard should include a Job History section showing:
+
+Previous jobs completed
+
+Which technician performed the job
+
+Time taken to complete the job
+
+If a job stop occurred
+
+Reason for the job stoppage
+
+This history helps the Job Controller understand past actions and manage job reallocation efficiently.

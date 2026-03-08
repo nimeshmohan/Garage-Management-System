@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/status-badge";
-import { FileSearch, History, ClipboardList, Pencil, Check, X, AlertCircle, Upload, Plus, Trash2, FileText, Wrench, PackageCheck, RotateCcw, TruckIcon, Clock } from "lucide-react";
+import { FileSearch, History, ClipboardList, Pencil, Check, X, AlertCircle, Upload, Plus, Trash2, FileText, Wrench, PackageCheck, RotateCcw, TruckIcon, Clock, Hourglass } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
@@ -153,15 +153,22 @@ export function AdviserDashboard() {
     return matchesSearch && matchesDate;
   }) || [];
 
-  const WORK_IN_PROGRESS_STATUSES = ["Inspection Completed", "Work in Progress", "Waiting for Technician Approval", "Waiting for Parts"];
-  const ACTIVE_STATUSES = ["Waiting for Adviser", ...WORK_IN_PROGRESS_STATUSES, "Ready for Delivery", "Reopened", "Delivered"];
+  const WORK_IN_PROGRESS_STATUSES = ["Work in Progress", "Waiting for Technician Approval", "Job Stopped"];
+  const ACTIVE_STATUSES = ["Waiting for Adviser", "Waiting for Job Allocation", "Inspection Completed", ...WORK_IN_PROGRESS_STATUSES, "Ready for Delivery", "Reopened", "Delivered"];
 
-  const pendingInspection  = filteredVehicles.filter(v => v.status === "Waiting for Adviser");
-  const workInProgress     = filteredVehicles.filter(v => WORK_IN_PROGRESS_STATUSES.includes(v.status));
-  const pendingFinal       = filteredVehicles.filter(v => v.status === "Ready for Delivery");
-  const reopened           = filteredVehicles.filter(v => v.status === "Reopened");
-  const delivered          = filteredVehicles.filter(v => v.status === "Delivered");
-  const historyVehicles    = filteredVehicles.filter(v => !ACTIVE_STATUSES.includes(v.status));
+  const now = new Date();
+  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const pendingInspection    = filteredVehicles.filter(v => v.status === "Waiting for Adviser");
+  const waitingAllocation    = filteredVehicles.filter(v => v.status === "Waiting for Job Allocation" || v.status === "Inspection Completed");
+  const workInProgress       = filteredVehicles.filter(v => WORK_IN_PROGRESS_STATUSES.includes(v.status));
+  const pendingFinal         = filteredVehicles.filter(v => v.status === "Ready for Delivery");
+  const reopened             = filteredVehicles.filter(v => v.status === "Reopened");
+  const delivered            = filteredVehicles.filter(v => v.status === "Delivered");
+  const historyVehicles      = filteredVehicles.filter(v => {
+    if (!v.createdAt) return false;
+    return new Date(v.createdAt) >= currentMonthStart;
+  });
 
   const handleDeliver = (id: number) => {
     updateVehicle.mutate({ id, status: "Delivered" }, {
@@ -205,7 +212,7 @@ export function AdviserDashboard() {
       id: selectedId,
       complaints: JSON.stringify(complaints),
       serviceNotes: isPostWork ? (vehicle?.serviceNotes || serviceNotes) : serviceNotes,
-      status: isPostWork ? "Delivered" : "Inspection Completed"
+      status: isPostWork ? "Delivered" : "Waiting for Job Allocation"
     }, {
       onSuccess: () => {
         setSelectedId(null);
@@ -456,6 +463,11 @@ export function AdviserDashboard() {
               Pending Inspection
               {pendingInspection.length > 0 && <span className="ml-1 rounded-full bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{pendingInspection.length}</span>}
             </TabsTrigger>
+            <TabsTrigger value="waiting-allocation" className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-waiting-allocation">
+              <Hourglass className="w-3.5 h-3.5 shrink-0" />
+              Waiting for Job Allocation
+              {waitingAllocation.length > 0 && <span className="ml-1 rounded-full bg-purple-500 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{waitingAllocation.length}</span>}
+            </TabsTrigger>
             <TabsTrigger value="work-in-progress" className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-work-in-progress">
               <Wrench className="w-3.5 h-3.5 shrink-0" />
               Work in Progress
@@ -503,10 +515,27 @@ export function AdviserDashboard() {
           </div>
         </TabsContent>
 
+        {/* Waiting for Job Allocation */}
+        <TabsContent value="waiting-allocation" className="mt-0">
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground">Inspection completed — forwarded to Job Controller for technician assignment.</p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+            {waitingAllocation.length === 0 ? (
+              <div className="col-span-full py-12 flex flex-col items-center justify-center text-muted-foreground bg-card border border-dashed rounded-2xl">
+                <Hourglass className="w-12 h-12 mb-4 text-muted" />
+                <p className="text-lg font-medium">No vehicles waiting for job allocation.</p>
+              </div>
+            ) : (
+              waitingAllocation.map(v => <VehicleCard key={v.id} v={v} showAction={false} />)
+            )}
+          </div>
+        </TabsContent>
+
         {/* Work in Progress */}
         <TabsContent value="work-in-progress" className="mt-0">
           <div className="mb-4">
-            <p className="text-sm text-muted-foreground">Inspection completed — vehicles forwarded to technician or job controller.</p>
+            <p className="text-sm text-muted-foreground">Jobs assigned to technicians — currently being worked on.</p>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
             {workInProgress.length === 0 ? (
@@ -574,7 +603,7 @@ export function AdviserDashboard() {
         {/* History */}
         <TabsContent value="history" className="mt-0">
           <div className="mb-4">
-            <p className="text-sm text-muted-foreground">All other vehicles (appointments not yet received, etc.).</p>
+            <p className="text-sm text-muted-foreground">All vehicles from the current month — {format(now, "MMMM yyyy")}.</p>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
             {historyVehicles.length === 0 ? (

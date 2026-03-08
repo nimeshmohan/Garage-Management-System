@@ -4,11 +4,10 @@ import { useUser } from "@/hooks/use-auth";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/status-badge";
 import {
   PlayCircle, CheckCircle2, History, ClipboardList, PauseCircle,
-  Package, Clock, AlertCircle, ChevronRight, Car, User
+  StopCircle, Clock, AlertCircle, ChevronRight, Car, User
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,6 +20,16 @@ type AssignmentEntry = {
   estimatedTime: string;
 };
 
+type HistoryEntry = {
+  type: string;
+  timestamp?: string;
+  technicianId?: number;
+  technicianName?: string;
+  stopReason?: string;
+  durationSeconds?: number;
+  workDetails?: string;
+};
+
 export function TechnicianDashboard() {
   const { data: user } = useUser();
   const { data: vehicles, isLoading } = useVehicles();
@@ -28,8 +37,8 @@ export function TechnicianDashboard() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [workDetails, setWorkDetails] = useState("");
-  const [partsNeeded, setPartsNeeded] = useState("");
-  const [partsWaitVehicle, setPartsWaitVehicle] = useState<any>(null);
+  const [stopReason, setStopReason] = useState("");
+  const [stopJobVehicle, setStopJobVehicle] = useState<any>(null);
   const [currentTime, setCurrentTime] = useState<Record<number, number>>({});
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -49,6 +58,13 @@ export function TechnicianDashboard() {
     return getMyAssignments(v).length > 0;
   };
 
+  const appendHistory = (v: any, entry: HistoryEntry): string => {
+    let history: HistoryEntry[] = [];
+    try { history = JSON.parse(v.jobHistory || "[]"); } catch {}
+    history.push({ ...entry, timestamp: new Date().toISOString() });
+    return JSON.stringify(history);
+  };
+
   const filteredVehicles = vehicles?.filter(v => {
     const matchesSearch =
       v.vehicleNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -58,7 +74,7 @@ export function TechnicianDashboard() {
     return matchesSearch && matchesDate;
   }) || [];
 
-  const activeStatuses = ["Work in Progress", "Waiting for Parts", "Waiting for Technician Approval", "Reopened"];
+  const activeStatuses = ["Work in Progress", "Waiting for Technician Approval", "Reopened", "Job Stopped"];
   const activeJobs = filteredVehicles.filter(v => isAssignedToMe(v) && activeStatuses.includes(v.status));
   const completedJobs = filteredVehicles.filter(v => isAssignedToMe(v) && (v.status === "Ready for Delivery" || v.status === "Delivered"));
 
@@ -97,26 +113,36 @@ export function TechnicianDashboard() {
     }
   };
 
-  const handlePartsWaitSubmit = (e: React.FormEvent) => {
+  const handleJobStopSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!partsWaitVehicle) return;
-    updateVehicle.mutate({
-      id: partsWaitVehicle.id,
-      isWaitingForParts: true,
-      lastPartsWaitStartedAt: new Date().toISOString(),
-      partsNeeded,
-    }, { onSuccess: () => { setPartsWaitVehicle(null); setPartsNeeded(""); } });
-  };
+    if (!stopJobVehicle || !stopReason.trim()) return;
+    const v = stopJobVehicle;
 
-  const togglePartsReceived = (v: any) => {
-    const start = v.lastPartsWaitStartedAt ? new Date(v.lastPartsWaitStartedAt).getTime() : null;
-    const now = Date.now();
-    const additionalWait = start ? Math.max(0, Math.floor((now - start) / 1000)) : 0;
+    // Stop timer if running
+    let newDuration = v.totalWorkDuration || 0;
+    let timerUpdates: any = {};
+    if (v.isTimerRunning && v.lastTimerStartedAt) {
+      const start = new Date(v.lastTimerStartedAt).getTime();
+      const elapsed = Math.floor((Date.now() - start) / 1000);
+      newDuration += Math.max(0, elapsed);
+      timerUpdates = { isTimerRunning: false, totalWorkDuration: newDuration, lastTimerStartedAt: null };
+    }
+
+    const newHistory = appendHistory(v, {
+      type: "jobStop",
+      technicianId: user?.id,
+      technicianName: user?.name,
+      stopReason: stopReason.trim(),
+    } as HistoryEntry);
+
     updateVehicle.mutate({
       id: v.id,
-      isWaitingForParts: false,
-      partsWaitDuration: (v.partsWaitDuration || 0) + additionalWait,
-      lastPartsWaitStartedAt: null,
+      status: "Job Stopped",
+      stopReason: stopReason.trim(),
+      jobHistory: newHistory,
+      ...timerUpdates,
+    }, {
+      onSuccess: () => { setStopJobVehicle(null); setStopReason(""); }
     });
   };
 
@@ -136,6 +162,15 @@ export function TechnicianDashboard() {
       const start = new Date(v.lastTimerStartedAt).getTime();
       totalDuration += Math.floor((Date.now() - start) / 1000);
     }
+
+    const newHistory = appendHistory(v, {
+      type: "completed",
+      technicianId: user?.id,
+      technicianName: user?.name,
+      durationSeconds: totalDuration,
+      workDetails,
+    } as HistoryEntry);
+
     updateVehicle.mutate({
       id: selectedId,
       workDetails,
@@ -143,16 +178,17 @@ export function TechnicianDashboard() {
       isTimerRunning: false,
       totalWorkDuration: totalDuration,
       lastTimerStartedAt: null,
+      jobHistory: newHistory,
     }, { onSuccess: () => { setSelectedId(null); setWorkDetails(""); } });
   };
 
   const VehicleCard = ({ v, showActions = true }: { v: any; showActions?: boolean }) => {
     const myAssignments = getMyAssignments(v);
-    const displayStatus = v.isWaitingForParts ? "Waiting for Parts" : v.status;
+    const isStopped = v.status === "Job Stopped";
 
     return (
       <Card className="border-border/50 shadow-lg relative overflow-hidden group">
-        <div className={`absolute top-0 left-0 w-1 h-full ${showActions ? (v.isWaitingForParts ? "bg-orange-500" : "bg-primary") : "bg-muted-foreground/30"} group-hover:w-2 transition-all duration-300`} />
+        <div className={`absolute top-0 left-0 w-1 h-full ${isStopped ? "bg-rose-500" : showActions ? "bg-primary" : "bg-muted-foreground/30"} group-hover:w-2 transition-all duration-300`} />
         <CardContent className="p-5 pb-4">
           <div className="flex justify-between items-start mb-3">
             <div>
@@ -160,10 +196,12 @@ export function TechnicianDashboard() {
               <p className="text-sm font-medium text-primary">{v.jobCardNumber}</p>
             </div>
             <div className="flex flex-col items-end gap-2">
-              <StatusBadge status={displayStatus} />
-              <div className="text-base font-mono font-bold bg-muted px-2 py-1 rounded text-foreground">
-                {formatTime(currentTime[v.id] || 0)}
-              </div>
+              <StatusBadge status={v.status} />
+              {showActions && !isStopped && (
+                <div className="text-base font-mono font-bold bg-muted px-2 py-1 rounded text-foreground">
+                  {formatTime(currentTime[v.id] || 0)}
+                </div>
+              )}
             </div>
           </div>
 
@@ -184,12 +222,18 @@ export function TechnicianDashboard() {
             </div>
           </div>
 
+          {/* Stop Reason (when stopped) */}
+          {isStopped && v.stopReason && (
+            <div className="mb-3 bg-rose-50 dark:bg-rose-900/15 border border-rose-200 dark:border-rose-800 rounded-lg px-3 py-2">
+              <p className="text-xs font-semibold text-rose-700 dark:text-rose-400 mb-0.5">Stop Reason</p>
+              <p className="text-xs">{v.stopReason}</p>
+            </div>
+          )}
+
           {/* My Assigned Complaints */}
           {myAssignments.length > 0 ? (
             <div className="mb-3 space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                My Assigned Tasks
-              </p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">My Assigned Tasks</p>
               {myAssignments.map((a, i) => (
                 <div key={i} className="bg-amber-50 dark:bg-amber-900/15 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
                   <div className="flex items-start gap-2">
@@ -207,7 +251,6 @@ export function TechnicianDashboard() {
               ))}
             </div>
           ) : (
-            /* Legacy: show service type + estimated time */
             <div className="grid grid-cols-2 gap-2 text-xs mb-3">
               <div className="bg-muted/40 p-2.5 rounded-lg">
                 <span className="text-muted-foreground block">Service</span>
@@ -240,7 +283,7 @@ export function TechnicianDashboard() {
           )}
         </CardContent>
 
-        {showActions && (
+        {showActions && !isStopped && (
           <CardFooter className="bg-muted/20 border-t px-4 py-3 flex flex-wrap gap-2">
             <Button
               variant={v.isTimerRunning ? "destructive" : "default"}
@@ -255,12 +298,11 @@ export function TechnicianDashboard() {
             </Button>
             <Button
               variant="outline"
-              className={`flex-1 ${v.isWaitingForParts ? "bg-orange-100 border-orange-500 text-orange-700 dark:bg-orange-900/20 dark:border-orange-600" : ""}`}
-              onClick={() => v.isWaitingForParts ? togglePartsReceived(v) : setPartsWaitVehicle(v)}
-              data-testid={`button-parts-${v.id}`}
+              className="flex-1 border-rose-400 text-rose-600 hover:bg-rose-50 dark:border-rose-600 dark:text-rose-400"
+              onClick={() => setStopJobVehicle(v)}
+              data-testid={`button-job-stop-${v.id}`}
             >
-              <Package className="w-4 h-4 mr-2" />
-              {v.isWaitingForParts ? "Parts Received" : "Waiting for Parts"}
+              <StopCircle className="w-4 h-4 mr-2" />Job Stop
             </Button>
             <Button
               variant="default"
@@ -270,6 +312,14 @@ export function TechnicianDashboard() {
             >
               <CheckCircle2 className="w-4 h-4 mr-2" />Mark Completed
             </Button>
+          </CardFooter>
+        )}
+
+        {showActions && isStopped && (
+          <CardFooter className="bg-rose-50/50 dark:bg-rose-900/10 border-t border-rose-200 dark:border-rose-800 px-4 py-3">
+            <p className="text-xs text-rose-600 dark:text-rose-400 text-center w-full">
+              Job stopped — awaiting reassignment from Job Controller.
+            </p>
           </CardFooter>
         )}
       </Card>
@@ -343,6 +393,45 @@ export function TechnicianDashboard() {
         </TabsContent>
       </Tabs>
 
+      {/* Job Stop Dialog */}
+      <Dialog open={!!stopJobVehicle} onOpenChange={val => { if (!val) { setStopJobVehicle(null); setStopReason(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <StopCircle className="w-5 h-5 text-rose-500" />
+              Job Stop
+            </DialogTitle>
+          </DialogHeader>
+          {stopJobVehicle && (
+            <form onSubmit={handleJobStopSubmit} className="space-y-4 mt-2">
+              <div className="bg-muted/40 rounded-lg px-4 py-3 text-sm">
+                <p className="font-medium">{stopJobVehicle.vehicleModel} · {stopJobVehicle.vehicleNumber}</p>
+                <p className="text-muted-foreground text-xs">{stopJobVehicle.jobCardNumber} — {stopJobVehicle.customerName}</p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Reason for Stop</label>
+                <Textarea
+                  required
+                  placeholder="Describe why work is being stopped (missing parts, special tool required, etc.)..."
+                  className="min-h-[100px]"
+                  value={stopReason}
+                  onChange={e => setStopReason(e.target.value)}
+                  data-testid="textarea-stop-reason"
+                />
+              </div>
+              <div className="flex gap-3">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => { setStopJobVehicle(null); setStopReason(""); }}>
+                  Cancel
+                </Button>
+                <Button type="submit" className="flex-1 bg-rose-600 hover:bg-rose-700" disabled={updateVehicle.isPending || !stopReason.trim()} data-testid="button-confirm-stop">
+                  {updateVehicle.isPending ? "Stopping..." : "Confirm Job Stop"}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Complete Job Dialog */}
       <Dialog open={!!selectedId} onOpenChange={val => { if (!val) { setSelectedId(null); setWorkDetails(""); } }}>
         <DialogContent>
@@ -363,31 +452,6 @@ export function TechnicianDashboard() {
             </div>
             <Button type="submit" className="w-full" disabled={updateVehicle.isPending} data-testid="button-finish-job">
               {updateVehicle.isPending ? "Submitting..." : "Finish Job & Mark Ready"}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Parts Wait Dialog */}
-      <Dialog open={!!partsWaitVehicle} onOpenChange={val => { if (!val) setPartsWaitVehicle(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Waiting for Parts</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handlePartsWaitSubmit} className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Parts Needed</label>
-              <Textarea
-                required
-                placeholder="List the parts required for this job..."
-                className="min-h-[100px]"
-                value={partsNeeded}
-                onChange={e => setPartsNeeded(e.target.value)}
-                data-testid="textarea-parts-needed"
-              />
-            </div>
-            <Button type="submit" className="w-full" disabled={updateVehicle.isPending} data-testid="button-confirm-parts">
-              {updateVehicle.isPending ? "Submitting..." : "Confirm Waiting for Parts"}
             </Button>
           </form>
         </DialogContent>

@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, Clock, AlertCircle, Wrench, Package, CalendarClock, CarFront } from "lucide-react";
+import { CheckCircle, Clock, AlertCircle, Wrench, Package, CalendarClock, CarFront, Hourglass, StopCircle } from "lucide-react";
 
 export function StatusBadge({ status }: { status: string }) {
   const getStatusConfig = () => {
@@ -13,11 +13,14 @@ export function StatusBadge({ status }: { status: string }) {
       case "Vehicle Received":
         return { color: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300", icon: Package };
       case "Inspection Completed":
-        return { color: "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300", icon: CheckCircle };
+      case "Waiting for Job Allocation":
+        return { color: "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300", icon: Hourglass };
       case "Waiting for Technician Approval":
         return { color: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300", icon: AlertCircle };
       case "Work in Progress":
         return { color: "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300", icon: Wrench };
+      case "Job Stopped":
+        return { color: "bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300", icon: StopCircle };
       case "Ready for Delivery":
         return { color: "bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-300", icon: CheckCircle };
       case "Delivered":

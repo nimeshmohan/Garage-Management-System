@@ -8,7 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/status-badge";
-import { Wrench, History, ClipboardList, User, Car, FileText, Clock, AlertCircle, ChevronRight, Users } from "lucide-react";
+import {
+  Wrench, History, ClipboardList, User, Car, FileText,
+  AlertCircle, ChevronRight, Users, StopCircle, Clock, CheckCircle2, RotateCcw
+} from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 
@@ -22,6 +25,18 @@ type StoredAssignment = {
   complaint: string;
   technicianId: number;
   estimatedTime: string;
+};
+
+type HistoryEntry = {
+  type: string;
+  timestamp?: string;
+  technicianId?: number;
+  technicianName?: string;
+  complaints?: string[];
+  estimatedTime?: string;
+  stopReason?: string;
+  durationSeconds?: number;
+  workDetails?: string;
 };
 
 export function ControllerDashboard() {
@@ -44,13 +59,20 @@ export function ControllerDashboard() {
     return matchesSearch && matchesDate;
   }) || [];
 
-  const pendingAssignments = filteredVehicles.filter(v => v.status === "Inspection Completed");
+  const pendingAssignments = filteredVehicles.filter(v =>
+    v.status === "Waiting for Job Allocation" || v.status === "Inspection Completed"
+  );
+  const stoppedJobs = filteredVehicles.filter(v => v.status === "Job Stopped");
   const assignedJobs = filteredVehicles.filter(v =>
+    v.status !== "Waiting for Job Allocation" &&
     v.status !== "Inspection Completed" &&
+    v.status !== "Job Stopped" &&
     v.status !== "Vehicle Received" &&
     v.status !== "Waiting for Adviser" &&
     v.status !== "Today's Appointment"
   );
+
+  const getTechName = (id: number) => technicians?.find(t => t.id === id)?.name || `Tech #${id}`;
 
   const openDialog = (vehicle: any) => {
     let complaints: string[] = [];
@@ -82,6 +104,13 @@ export function ControllerDashboard() {
     setAssignments(prev => prev.map((row, i) => i === index ? { ...row, [field]: value } : row));
   };
 
+  const appendHistory = (v: any, entry: HistoryEntry): string => {
+    let history: HistoryEntry[] = [];
+    try { history = JSON.parse(v.jobHistory || "[]"); } catch {}
+    history.push({ ...entry, timestamp: new Date().toISOString() });
+    return JSON.stringify(history);
+  };
+
   const handleAssign = (e: React.FormEvent) => {
     e.preventDefault();
     if (!dialogVehicle) return;
@@ -95,12 +124,25 @@ export function ControllerDashboard() {
       estimatedTime: a.estimatedTime,
     }));
 
+    const primaryTech = stored[0];
+    const isReassign = dialogVehicle.status === "Job Stopped";
+
+    const newHistory = appendHistory(dialogVehicle, {
+      type: isReassign ? "reassigned" : "assigned",
+      technicianId: primaryTech.technicianId,
+      technicianName: getTechName(primaryTech.technicianId),
+      complaints: stored.map(s => s.complaint),
+      estimatedTime: stored.map(s => `${s.complaint}: ${s.estimatedTime}`).join("; "),
+    });
+
     updateVehicle.mutate({
       id: dialogVehicle.id,
-      technicianId: stored[0].technicianId,
-      estimatedTime: stored[0].estimatedTime,
+      technicianId: primaryTech.technicianId,
+      estimatedTime: primaryTech.estimatedTime,
       complaintAssignments: JSON.stringify(stored),
       status: "Work in Progress",
+      stopReason: isReassign ? null : dialogVehicle.stopReason,
+      jobHistory: newHistory,
     }, {
       onSuccess: () => {
         setDialogVehicle(null);
@@ -109,25 +151,87 @@ export function ControllerDashboard() {
     });
   };
 
-  const getTechName = (id: number) => technicians?.find(t => t.id === id)?.name || `Tech #${id}`;
-
   const getAssignedTechs = (v: any): string[] => {
     try {
       const arr: StoredAssignment[] = JSON.parse(v.complaintAssignments || "[]");
-      const names = Array.from(new Set(arr.map(a => getTechName(a.technicianId))));
-      return names;
+      return Array.from(new Set(arr.map(a => getTechName(a.technicianId))));
     } catch { return []; }
   };
 
-  const VehicleCard = ({ v, showAction = true }: { v: any; showAction?: boolean }) => {
+  const formatDuration = (seconds: number) => {
+    if (!seconds) return "0m";
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+  };
+
+  const JobHistorySection = ({ v }: { v: any }) => {
+    const [expanded, setExpanded] = useState(false);
+    let history: HistoryEntry[] = [];
+    try { history = JSON.parse(v.jobHistory || "[]"); } catch {}
+    if (history.length === 0) return null;
+
+    const getEntryIcon = (type: string) => {
+      if (type === "jobStop") return <StopCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />;
+      if (type === "completed") return <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />;
+      if (type === "reassigned") return <RotateCcw className="w-3.5 h-3.5 text-blue-500 shrink-0" />;
+      return <Wrench className="w-3.5 h-3.5 text-primary shrink-0" />;
+    };
+
+    const getEntryLabel = (entry: HistoryEntry) => {
+      if (entry.type === "jobStop") return `Job stopped by ${entry.technicianName || "technician"}`;
+      if (entry.type === "completed") return `Completed by ${entry.technicianName || "technician"} (${formatDuration(entry.durationSeconds || 0)})`;
+      if (entry.type === "reassigned") return `Reassigned to ${entry.technicianName || "technician"}`;
+      return `Assigned to ${entry.technicianName || "technician"}`;
+    };
+
+    return (
+      <div className="mt-3 border-t border-border/50 pt-3">
+        <button
+          type="button"
+          className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors"
+          onClick={() => setExpanded(x => !x)}
+        >
+          <History className="w-3.5 h-3.5" />
+          Job History ({history.length})
+          <ChevronRight className={`w-3.5 h-3.5 transition-transform ${expanded ? "rotate-90" : ""}`} />
+        </button>
+
+        {expanded && (
+          <ol className="mt-2 space-y-2 pl-1">
+            {history.map((entry, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs">
+                <div className="mt-0.5">{getEntryIcon(entry.type)}</div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium">{getEntryLabel(entry)}</p>
+                  {entry.stopReason && (
+                    <p className="text-muted-foreground mt-0.5 bg-rose-50 dark:bg-rose-900/10 px-2 py-1 rounded text-[11px]">
+                      Reason: {entry.stopReason}
+                    </p>
+                  )}
+                  {entry.workDetails && (
+                    <p className="text-muted-foreground mt-0.5 line-clamp-2 text-[11px]">{entry.workDetails}</p>
+                  )}
+                  <p className="text-muted-foreground/60 text-[10px] mt-0.5">
+                    {entry.timestamp ? format(new Date(entry.timestamp), "dd MMM yyyy, HH:mm") : ""}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    );
+  };
+
+  const VehicleCard = ({ v, showAction = true, isStoppage = false }: { v: any; showAction?: boolean; isStoppage?: boolean }) => {
     const assignedTechs = getAssignedTechs(v);
-    const primaryTech = technicians?.find(t => t.id === v.technicianId);
 
     let complaints: string[] = [];
     try { complaints = JSON.parse(v.complaints || "[]"); } catch {}
 
     return (
-      <Card className={`shadow-sm transition-all duration-200 hover:shadow-md ${showAction ? "border-l-4 border-l-orange-500" : "border border-border/50"}`}>
+      <Card className={`shadow-sm transition-all duration-200 hover:shadow-md ${isStoppage ? "border-l-4 border-l-rose-500" : showAction ? "border-l-4 border-l-orange-500" : "border border-border/50"}`}>
         <CardContent className="p-5">
           <div className="flex justify-between items-start mb-3">
             <div>
@@ -147,6 +251,14 @@ export function ControllerDashboard() {
               <span className="font-medium">{v.serviceAdviser || "—"}</span>
             </div>
           </div>
+
+          {/* Stop Reason */}
+          {isStoppage && v.stopReason && (
+            <div className="mb-3 bg-rose-50 dark:bg-rose-900/15 border border-rose-200 dark:border-rose-800 rounded-lg px-3 py-2">
+              <p className="text-xs font-semibold text-rose-700 dark:text-rose-400 mb-0.5">Stop Reason</p>
+              <p className="text-xs">{v.stopReason}</p>
+            </div>
+          )}
 
           {complaints.length > 0 && (
             <div className="mb-3">
@@ -179,13 +291,16 @@ export function ControllerDashboard() {
 
           <Button
             className="w-full"
-            variant={showAction ? "default" : "outline"}
+            variant={showAction || isStoppage ? "default" : "outline"}
             onClick={() => openDialog(v)}
             data-testid={`button-assign-${v.id}`}
           >
             <Wrench className="w-4 h-4 mr-2" />
-            {showAction ? "Assign Technician" : "Reallocate Technician"}
+            {isStoppage ? "Reassign Technician" : showAction ? "Assign Technician" : "Reallocate Technician"}
           </Button>
+
+          {/* Job History */}
+          <JobHistorySection v={v} />
         </CardContent>
       </Card>
     );
@@ -195,7 +310,7 @@ export function ControllerDashboard() {
     <div className="space-y-6">
       <div>
         <h2 className="text-3xl font-display font-bold text-foreground">Job Controller</h2>
-        <p className="text-muted-foreground mt-1">Assign complaints to technicians and set estimated completion times.</p>
+        <p className="text-muted-foreground mt-1">Assign complaints to technicians and manage job stoppages.</p>
       </div>
 
       <div className="flex flex-col md:flex-row gap-3">
@@ -218,16 +333,25 @@ export function ControllerDashboard() {
       </div>
 
       <Tabs defaultValue="active" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2 mb-6">
-          <TabsTrigger value="active" className="flex items-center gap-2">
-            <ClipboardList className="w-4 h-4" />
-            Needs Assignment ({pendingAssignments.length})
-          </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-2">
-            <History className="w-4 h-4" />
-            Assigned / History ({assignedJobs.length})
-          </TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto pb-1 mb-6">
+          <TabsList className="inline-flex h-auto w-max min-w-full gap-1 p-1.5 bg-muted rounded-xl">
+            <TabsTrigger value="active" className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm whitespace-nowrap">
+              <ClipboardList className="w-4 h-4" />
+              Needs Assignment
+              {pendingAssignments.length > 0 && <span className="ml-1 rounded-full bg-orange-500 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{pendingAssignments.length}</span>}
+            </TabsTrigger>
+            <TabsTrigger value="stoppage" className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm whitespace-nowrap">
+              <StopCircle className="w-4 h-4" />
+              Job Stoppage
+              {stoppedJobs.length > 0 && <span className="ml-1 rounded-full bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{stoppedJobs.length}</span>}
+            </TabsTrigger>
+            <TabsTrigger value="history" className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm whitespace-nowrap">
+              <History className="w-4 h-4" />
+              Assigned / History
+              {assignedJobs.length > 0 && <span className="ml-1 rounded-full bg-muted-foreground/50 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{assignedJobs.length}</span>}
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="active" className="mt-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -241,6 +365,22 @@ export function ControllerDashboard() {
               </div>
             ) : (
               pendingAssignments.map(v => <VehicleCard key={v.id} v={v} />)
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="stoppage" className="mt-0">
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground">Jobs stopped by technicians — review the reason and reassign as needed.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {stoppedJobs.length === 0 ? (
+              <div className="col-span-full py-14 flex flex-col items-center justify-center text-muted-foreground bg-card border border-dashed rounded-2xl">
+                <StopCircle className="w-12 h-12 mb-3 text-muted" />
+                <p className="text-base font-medium">No job stoppages at this time.</p>
+              </div>
+            ) : (
+              stoppedJobs.map(v => <VehicleCard key={v.id} v={v} isStoppage={true} />)
             )}
           </div>
         </TabsContent>
@@ -259,13 +399,13 @@ export function ControllerDashboard() {
         </TabsContent>
       </Tabs>
 
-      {/* Assign Dialog */}
+      {/* Assign / Reassign Dialog */}
       <Dialog open={!!dialogVehicle} onOpenChange={open => { if (!open) { setDialogVehicle(null); setAssignments([]); } }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl flex items-center gap-2">
               <Wrench className="w-5 h-5 text-primary" />
-              Assign Technician
+              {dialogVehicle?.status === "Job Stopped" ? "Reassign Technician" : "Assign Technician"}
             </DialogTitle>
           </DialogHeader>
 
@@ -306,6 +446,14 @@ export function ControllerDashboard() {
                 </div>
               </div>
 
+              {/* Stop Reason (if reassigning) */}
+              {dialogVehicle.status === "Job Stopped" && dialogVehicle.stopReason && (
+                <div className="rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50/50 dark:bg-rose-900/10 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 mb-1">Stop Reason</p>
+                  <p className="text-sm">{dialogVehicle.stopReason}</p>
+                </div>
+              )}
+
               {/* Inspection Notes */}
               {dialogVehicle.serviceNotes && (
                 <div className="rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 p-4">
@@ -318,7 +466,7 @@ export function ControllerDashboard() {
               <div className="space-y-3">
                 <p className="text-sm font-semibold flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-amber-500" />
-                  Assign Each Complaint to a Technician
+                  {dialogVehicle.status === "Job Stopped" ? "Reassign Each Complaint" : "Assign Each Complaint to a Technician"}
                 </p>
 
                 {assignments.map((row, idx) => (
