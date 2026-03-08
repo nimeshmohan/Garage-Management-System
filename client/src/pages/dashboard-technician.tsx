@@ -74,7 +74,7 @@ export function TechnicianDashboard() {
     return matchesSearch && matchesDate;
   }) || [];
 
-  const activeStatuses = ["Work in Progress", "Waiting for Technician Approval", "Reopened", "Job Stopped"];
+  const activeStatuses = ["Work in Progress", "Waiting for Technician Approval", "Job Stopped"];
   const activeJobs = filteredVehicles.filter(v => isAssignedToMe(v) && activeStatuses.includes(v.status));
   const completedJobs = filteredVehicles.filter(v => isAssignedToMe(v) && (v.status === "Ready for Delivery" || v.status === "Delivered"));
 

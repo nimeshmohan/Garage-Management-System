@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/status-badge";
-import { FileSearch, History, ClipboardList, Pencil, Check, X, AlertCircle, Upload, Plus, Trash2, FileText, Wrench, PackageCheck, RotateCcw, TruckIcon, Clock, Hourglass } from "lucide-react";
+import { FileSearch, History, ClipboardList, Pencil, Check, X, AlertCircle, Upload, Plus, Trash2, FileText, Wrench, PackageCheck, RotateCcw, TruckIcon, Clock, Hourglass, StopCircle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
@@ -153,8 +153,8 @@ export function AdviserDashboard() {
     return matchesSearch && matchesDate;
   }) || [];
 
-  const WORK_IN_PROGRESS_STATUSES = ["Work in Progress", "Waiting for Technician Approval", "Job Stopped"];
-  const ACTIVE_STATUSES = ["Waiting for Adviser", "Waiting for Job Allocation", "Inspection Completed", ...WORK_IN_PROGRESS_STATUSES, "Ready for Delivery", "Reopened", "Delivered"];
+  const WORK_IN_PROGRESS_STATUSES = ["Work in Progress", "Waiting for Technician Approval"];
+  const ACTIVE_STATUSES = ["Waiting for Adviser", "Waiting for Job Allocation", "Inspection Completed", ...WORK_IN_PROGRESS_STATUSES, "Job Stopped", "Ready for Delivery", "Reopened", "Delivered"];
 
   const now = new Date();
   const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -162,6 +162,7 @@ export function AdviserDashboard() {
   const pendingInspection    = filteredVehicles.filter(v => v.status === "Waiting for Adviser");
   const waitingAllocation    = filteredVehicles.filter(v => v.status === "Waiting for Job Allocation" || v.status === "Inspection Completed");
   const workInProgress       = filteredVehicles.filter(v => WORK_IN_PROGRESS_STATUSES.includes(v.status));
+  const jobStopped           = filteredVehicles.filter(v => v.status === "Job Stopped");
   const pendingFinal         = filteredVehicles.filter(v => v.status === "Ready for Delivery");
   const reopened             = filteredVehicles.filter(v => v.status === "Reopened");
   const delivered            = filteredVehicles.filter(v => v.status === "Delivered");
@@ -473,6 +474,11 @@ export function AdviserDashboard() {
               Work in Progress
               {workInProgress.length > 0 && <span className="ml-1 rounded-full bg-yellow-500 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{workInProgress.length}</span>}
             </TabsTrigger>
+            <TabsTrigger value="job-stopped" className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-job-stopped">
+              <StopCircle className="w-3.5 h-3.5 shrink-0" />
+              Job Stopped
+              {jobStopped.length > 0 && <span className="ml-1 rounded-full bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{jobStopped.length}</span>}
+            </TabsTrigger>
             <TabsTrigger value="pending-final" className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-pending-final">
               <PackageCheck className="w-3.5 h-3.5 shrink-0" />
               Pending Final Inspection
@@ -545,6 +551,23 @@ export function AdviserDashboard() {
               </div>
             ) : (
               workInProgress.map(v => <VehicleCard key={v.id} v={v} showAction={false} />)
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Job Stopped */}
+        <TabsContent value="job-stopped" className="mt-0">
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground">Jobs stopped by technicians — pending review and reassignment by Job Controller.</p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+            {jobStopped.length === 0 ? (
+              <div className="col-span-full py-12 flex flex-col items-center justify-center text-muted-foreground bg-card border border-dashed rounded-2xl">
+                <StopCircle className="w-12 h-12 mb-4 text-muted" />
+                <p className="text-lg font-medium">No stopped jobs at this time.</p>
+              </div>
+            ) : (
+              jobStopped.map(v => <VehicleCard key={v.id} v={v} showAction={false} />)
             )}
           </div>
         </TabsContent>

@@ -34,10 +34,19 @@ A full-stack car service management web application for Skoda service centers wi
 - **All dashboards**: Search by vehicle/job card/customer + date filter
 
 ## Job Controller → Technician Workflow
-- **Trigger**: Vehicle becomes "Inspection Completed" after adviser completes inspection
+- **Trigger**: Vehicle becomes "Waiting for Job Allocation" after adviser completes inspection
 - **Controller assigns**: Opens "Assign Technician" dialog showing vehicle details, inspection notes, and each customer complaint as a separate row — each complaint gets its own technician + estimated time
 - **Multi-tech assignment**: Different complaints can be routed to different technicians; stored as JSON in `complaintAssignments` column
 - **After assignment**: Vehicle status → "Work in Progress"; each technician's dashboard automatically shows their assigned vehicle with only their specific complaints and estimated times
+- **Job Stopped**: Technician can stop a job with a reason; status → "Job Stopped"; controller sees it in "Job Stoppage" tab and can reassign
+- **Reopened Jobs**: When adviser reopens a job, status → "Reopened"; controller must reassign via "Reopened Jobs" tab; technicians do NOT see "Reopened" status directly
+- **Job History**: Stored as JSON in `jobHistory` column; each technician's assignment/stop/completion is tracked separately; shown as per-technician cards in controller dashboard
+
+## Adviser Dashboard Tabs
+Pending Inspection → Waiting for Job Allocation → Work in Progress → **Job Stopped** → Pending Final Inspection → Reopened → Delivered → History
+
+## Controller Dashboard Tabs
+Needs Assignment | Job Stoppage | **Reopened Jobs** | Assigned / History
 
 ## Data Model (vehicles table)
 Notable fields: `jobCardNumber`, `customerName`, `phone`, `vehicleNumber`, `vehicleModel`, `serviceAdviser`, `serviceOrderType`, `entryType` (Walk-in / Today's Appointment), `appointmentTime`, `ssdNo`, `priority`, `status`, `technicianId`, `complaints` (JSON array of complaint strings), `complaintAssignments` (JSON array of `{complaint, technicianId, estimatedTime}` objects), `serviceNotes`, `totalWorkDuration`, `partsWaitDuration`, `reopenReason`
