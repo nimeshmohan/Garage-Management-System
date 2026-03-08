@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/status-badge";
-import { FileSearch, History, ClipboardList, Pencil, Check, X, AlertCircle, Upload, Plus, Trash2, FileText } from "lucide-react";
+import { FileSearch, History, ClipboardList, Pencil, Check, X, AlertCircle, Upload, Plus, Trash2, FileText, Wrench, PackageCheck, RotateCcw, TruckIcon, Clock } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
@@ -153,9 +153,15 @@ export function AdviserDashboard() {
     return matchesSearch && matchesDate;
   }) || [];
 
-  const ACTIVE_STATUSES = ["Waiting for Adviser", "Vehicle Received", "Ready for Delivery"];
-  const pendingInspections = filteredVehicles.filter(v => ACTIVE_STATUSES.includes(v.status));
-  const history = filteredVehicles.filter(v => !ACTIVE_STATUSES.includes(v.status));
+  const WORK_IN_PROGRESS_STATUSES = ["Inspection Completed", "Work in Progress", "Waiting for Technician Approval", "Waiting for Parts"];
+  const ACTIVE_STATUSES = ["Waiting for Adviser", ...WORK_IN_PROGRESS_STATUSES, "Ready for Delivery", "Reopened", "Delivered"];
+
+  const pendingInspection  = filteredVehicles.filter(v => v.status === "Waiting for Adviser");
+  const workInProgress     = filteredVehicles.filter(v => WORK_IN_PROGRESS_STATUSES.includes(v.status));
+  const pendingFinal       = filteredVehicles.filter(v => v.status === "Ready for Delivery");
+  const reopened           = filteredVehicles.filter(v => v.status === "Reopened");
+  const delivered          = filteredVehicles.filter(v => v.status === "Delivered");
+  const historyVehicles    = filteredVehicles.filter(v => !ACTIVE_STATUSES.includes(v.status));
 
   const handleDeliver = (id: number) => {
     updateVehicle.mutate({ id, status: "Delivered" }, {
@@ -215,7 +221,7 @@ export function AdviserDashboard() {
   const handleReopenSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!reopenId) return;
-    updateVehicle.mutate({ id: reopenId, status: "Work in Progress", reopenReason }, {
+    updateVehicle.mutate({ id: reopenId, status: "Reopened", reopenReason }, {
       onSuccess: () => { setReopenId(null); setReopenReason(""); }
     });
   };
@@ -394,23 +400,25 @@ export function AdviserDashboard() {
 
           {showAction && (
             <div className="flex gap-2">
-              {v.status === "Ready for Delivery" ? (
-                <>
-                  <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={() => setShowConfirmDeliver(v.id)}>
-                    Deliver Vehicle
-                  </Button>
-                  <Button variant="outline" className="flex-1 border-destructive text-destructive" onClick={() => setReopenId(v.id)}>
-                    Reopen Job
-                  </Button>
-                </>
-              ) : (
+              {v.status === "Waiting for Adviser" && (
                 <Button
                   className="w-full shadow-lg shadow-primary/20 bg-gradient-to-r from-primary to-primary/80"
                   onClick={() => setSelectedId(v.id)}
+                  data-testid={`button-inspect-${v.id}`}
                 >
                   <FileSearch className="w-4 h-4 mr-2" />
                   Perform Inspection
                 </Button>
+              )}
+              {v.status === "Ready for Delivery" && (
+                <>
+                  <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={() => setShowConfirmDeliver(v.id)} data-testid={`button-deliver-${v.id}`}>
+                    Deliver Vehicle
+                  </Button>
+                  <Button variant="outline" className="flex-1 border-destructive text-destructive" onClick={() => setReopenId(v.id)} data-testid={`button-reopen-${v.id}`}>
+                    Reopen Job
+                  </Button>
+                </>
               )}
             </div>
           )}
@@ -440,42 +448,142 @@ export function AdviserDashboard() {
         </div>
       </div>
 
-      <Tabs defaultValue="active" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2 mb-8">
-          <TabsTrigger value="active" className="flex items-center gap-2">
-            <ClipboardList className="w-4 h-4" />
-            Pending ({pendingInspections.length})
-          </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-2">
-            <History className="w-4 h-4" />
-            History ({history.length})
-          </TabsTrigger>
-        </TabsList>
+      <Tabs defaultValue="pending-inspection" className="w-full">
+        <div className="overflow-x-auto pb-1 mb-6">
+          <TabsList className="inline-flex h-auto w-max min-w-full gap-1 p-1.5 bg-muted rounded-xl">
+            <TabsTrigger value="pending-inspection" className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-pending-inspection">
+              <Clock className="w-3.5 h-3.5 shrink-0" />
+              Pending Inspection
+              {pendingInspection.length > 0 && <span className="ml-1 rounded-full bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{pendingInspection.length}</span>}
+            </TabsTrigger>
+            <TabsTrigger value="work-in-progress" className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-work-in-progress">
+              <Wrench className="w-3.5 h-3.5 shrink-0" />
+              Work in Progress
+              {workInProgress.length > 0 && <span className="ml-1 rounded-full bg-yellow-500 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{workInProgress.length}</span>}
+            </TabsTrigger>
+            <TabsTrigger value="pending-final" className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-pending-final">
+              <PackageCheck className="w-3.5 h-3.5 shrink-0" />
+              Pending Final Inspection
+              {pendingFinal.length > 0 && <span className="ml-1 rounded-full bg-green-600 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{pendingFinal.length}</span>}
+            </TabsTrigger>
+            <TabsTrigger value="reopened" className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-reopened">
+              <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+              Reopened
+              {reopened.length > 0 && <span className="ml-1 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{reopened.length}</span>}
+            </TabsTrigger>
+            <TabsTrigger value="delivered" className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-delivered">
+              <TruckIcon className="w-3.5 h-3.5 shrink-0" />
+              Delivered
+              {delivered.length > 0 && <span className="ml-1 rounded-full bg-emerald-600 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{delivered.length}</span>}
+            </TabsTrigger>
+            <TabsTrigger value="history" className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-history">
+              <History className="w-3.5 h-3.5 shrink-0" />
+              History
+              {historyVehicles.length > 0 && <span className="ml-1 rounded-full bg-muted-foreground/50 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{historyVehicles.length}</span>}
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-        <TabsContent value="active" className="mt-0">
+        {/* Pending Inspection */}
+        <TabsContent value="pending-inspection" className="mt-0">
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground">Vehicles received and waiting for adviser inspection.</p>
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
             {isLoading ? (
               <p className="text-muted-foreground">Loading...</p>
-            ) : pendingInspections.length === 0 ? (
+            ) : pendingInspection.length === 0 ? (
               <div className="col-span-full py-12 flex flex-col items-center justify-center text-muted-foreground bg-card border border-dashed rounded-2xl">
-                <FileSearch className="w-12 h-12 mb-4 text-muted" />
-                <p className="text-lg">No vehicles pending.</p>
+                <Clock className="w-12 h-12 mb-4 text-muted" />
+                <p className="text-lg font-medium">No vehicles pending inspection.</p>
               </div>
             ) : (
-              pendingInspections.map(v => <VehicleCard key={v.id} v={v} />)
+              pendingInspection.map(v => <VehicleCard key={v.id} v={v} />)
             )}
           </div>
         </TabsContent>
 
-        <TabsContent value="history" className="mt-0">
+        {/* Work in Progress */}
+        <TabsContent value="work-in-progress" className="mt-0">
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground">Inspection completed — vehicles forwarded to technician or job controller.</p>
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
-            {history.length === 0 ? (
+            {workInProgress.length === 0 ? (
               <div className="col-span-full py-12 flex flex-col items-center justify-center text-muted-foreground bg-card border border-dashed rounded-2xl">
-                <History className="w-12 h-12 mb-4 text-muted" />
-                <p className="text-lg">No history found.</p>
+                <Wrench className="w-12 h-12 mb-4 text-muted" />
+                <p className="text-lg font-medium">No vehicles in progress.</p>
               </div>
             ) : (
-              history.map(v => <VehicleCard key={v.id} v={v} showAction={false} />)
+              workInProgress.map(v => <VehicleCard key={v.id} v={v} showAction={false} />)
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Pending Final Inspection */}
+        <TabsContent value="pending-final" className="mt-0">
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground">Technician work completed — perform final inspection before delivery.</p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+            {pendingFinal.length === 0 ? (
+              <div className="col-span-full py-12 flex flex-col items-center justify-center text-muted-foreground bg-card border border-dashed rounded-2xl">
+                <PackageCheck className="w-12 h-12 mb-4 text-muted" />
+                <p className="text-lg font-medium">No vehicles awaiting final inspection.</p>
+              </div>
+            ) : (
+              pendingFinal.map(v => <VehicleCard key={v.id} v={v} />)
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Reopened Vehicles */}
+        <TabsContent value="reopened" className="mt-0">
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground">Vehicles sent back to technician for additional repair after final inspection.</p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+            {reopened.length === 0 ? (
+              <div className="col-span-full py-12 flex flex-col items-center justify-center text-muted-foreground bg-card border border-dashed rounded-2xl">
+                <RotateCcw className="w-12 h-12 mb-4 text-muted" />
+                <p className="text-lg font-medium">No reopened vehicles.</p>
+              </div>
+            ) : (
+              reopened.map(v => <VehicleCard key={v.id} v={v} showAction={false} />)
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Delivered Vehicles */}
+        <TabsContent value="delivered" className="mt-0">
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground">Vehicles that passed final inspection and were delivered to the customer.</p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+            {delivered.length === 0 ? (
+              <div className="col-span-full py-12 flex flex-col items-center justify-center text-muted-foreground bg-card border border-dashed rounded-2xl">
+                <TruckIcon className="w-12 h-12 mb-4 text-muted" />
+                <p className="text-lg font-medium">No delivered vehicles yet.</p>
+              </div>
+            ) : (
+              delivered.map(v => <VehicleCard key={v.id} v={v} showAction={false} />)
+            )}
+          </div>
+        </TabsContent>
+
+        {/* History */}
+        <TabsContent value="history" className="mt-0">
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground">All other vehicles (appointments not yet received, etc.).</p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+            {historyVehicles.length === 0 ? (
+              <div className="col-span-full py-12 flex flex-col items-center justify-center text-muted-foreground bg-card border border-dashed rounded-2xl">
+                <History className="w-12 h-12 mb-4 text-muted" />
+                <p className="text-lg font-medium">No history found.</p>
+              </div>
+            ) : (
+              historyVehicles.map(v => <VehicleCard key={v.id} v={v} showAction={false} />)
             )}
           </div>
         </TabsContent>

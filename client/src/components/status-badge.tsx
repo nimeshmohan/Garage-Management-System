@@ -24,6 +24,8 @@ export function StatusBadge({ status }: { status: string }) {
         return { color: "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300", icon: CheckCircle };
       case "Waiting for Parts":
         return { color: "bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300", icon: Package };
+      case "Reopened":
+        return { color: "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-300", icon: AlertCircle };
       default:
         return { color: "bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-300", icon: Clock };
     }

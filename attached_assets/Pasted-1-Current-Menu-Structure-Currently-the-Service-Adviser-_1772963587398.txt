@@ -1,0 +1,185 @@
+1. Current Menu Structure
+
+Currently the Service Adviser dashboard contains:
+
+Pending
+
+History
+
+This needs to be expanded to better represent the real service workflow.
+
+2. New Menu Structure
+
+Replace the Pending menu with the following sections:
+
+Pending Inspection
+
+Work in Progress
+
+Pending Final Inspection
+
+Reopened Vehicles
+
+Delivered Vehicles
+
+Keep the History section as well.
+
+Final menu layout:
+
+Pending Inspection
+
+Work in Progress
+
+Pending Final Inspection
+
+Reopened Vehicles
+
+Delivered Vehicles
+
+History
+
+3. Section Logic
+Pending Inspection
+
+Show vehicles that:
+
+Were received by the receptionist
+
+Are assigned to the adviser
+
+Have not yet completed inspection
+
+Status example:
+
+Waiting for Adviser
+
+These vehicles are waiting for the Service Adviser to perform inspection.
+
+Work in Progress
+
+Show vehicles where:
+
+Inspection has been completed by the adviser
+
+The vehicle has been forwarded to Technician or Job Controller
+
+Work is currently being performed
+
+Status example:
+
+Inspection Completed / Work in Progress
+
+Pending Final Inspection
+
+Show vehicles where:
+
+Technician work has been completed
+
+Vehicle is waiting for Service Adviser final inspection before delivery
+
+Status example:
+
+Waiting for Final Inspection
+
+The adviser should perform final verification before delivery.
+
+Reopened Vehicles
+
+Add a new section called Reopened Vehicles.
+
+Show vehicles that:
+
+Were already inspected
+
+Were sent for final inspection
+
+But the adviser rejected the repair or found additional issues
+
+These vehicles are sent back to technician or job controller for additional work.
+
+Status example:
+
+Reopened / Additional Work Required
+
+These vehicles should appear in this section until the technician completes the additional repair again.
+
+Delivered Vehicles
+
+Show vehicles that:
+
+Passed final inspection
+
+Were marked as Delivered to the customer
+
+Status example:
+
+Delivered
+
+4. Filtering Logic
+
+Each adviser should only see vehicles assigned to them.
+
+Filter vehicles using:
+
+Service Adviser = Logged-in adviser
+
+5. UI Behavior
+
+Each section should display a table or list including:
+
+Vehicle Registration Number
+
+Customer Name
+
+Model
+
+Job Card Number
+
+Appointment Time
+
+Current Status
+
+Allow searching by:
+
+Vehicle number
+
+Customer name
+
+Job card number
+
+6. Expected Workflow
+
+Vehicle arrives
+→ Receptionist receives vehicle
+→ Appears in Pending Inspection
+
+Adviser completes inspection
+→ Moves to Work in Progress
+
+Technician completes repair
+→ Moves to Pending Final Inspection
+
+Adviser performs final inspection:
+
+If OK
+→ Move to Delivered Vehicles
+
+If issues found
+→ Move to Reopened Vehicles
+
+Technician fixes issues
+→ Returns to Pending Final Inspection
+
+7. Important Requirement
+
+Ensure status changes automatically move vehicles between sections.
+
+Example:
+
+Inspection completed → move from Pending Inspection → Work in Progress
+
+Final inspection failed → move to Reopened Vehicles
+
+8. Goal
+
+This structure should reflect the real dealership service workflow, making it easier for Service Advisers to track vehicles at each stage of the service process.
