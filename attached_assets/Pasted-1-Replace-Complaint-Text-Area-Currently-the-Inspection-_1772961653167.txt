@@ -1,0 +1,137 @@
+1. Replace Complaint Text Area
+
+Currently the Inspection Dialog contains a text area for entering customer complaints.
+
+Modify this section:
+
+Remove the manual text area and replace it with:
+
+Upload RO PDF field
+
+Label:
+
+Upload Repair Order (RO) PDF
+
+Accepted file types:
+
+.pdf
+
+2. PDF Upload Behavior
+
+When the Service Adviser uploads the PDF:
+
+Read the PDF content.
+
+Extract the text from the document.
+
+Locate the section with the heading:
+
+"Demanded Repair (Customer Voice)"
+
+This section contains line-by-line customer complaints.
+
+3. Complaint Extraction Logic
+
+The system should:
+
+Find the text under
+Demanded Repair (Customer Voice)
+
+Extract the complaint lines appearing below this heading.
+
+Stop extraction when reaching the next unrelated section.
+
+Ignore:
+
+Empty rows
+
+Numbers without text
+
+4. Display Extracted Complaints
+
+After extraction:
+
+Display the complaints as a list inside the inspection dialog.
+
+Example UI:
+
+Customer Complaints
+
+• Scheme service as per 5th year or 75k
+• Front RH power window not working
+• Abnormal noise from front side while driving
+• Washing AC engine
+• Noise from engine side – additional repair
+
+5. Editable Complaint List
+
+Each extracted complaint should appear as an editable input field.
+
+Service Adviser should be able to:
+
+Edit the complaint text
+
+Add new complaints
+
+Delete unwanted complaints
+
+Example UI:
+
+Complaint 1:
+[ Scheme service as per 5th year or 75k ] ✏️ 🗑
+
+Complaint 2:
+[ Front RH power window not working ] ✏️ 🗑
+
+Complaint 3:
+[ Abnormal noise from front side while driving ] ✏️ 🗑
+
+Buttons:
+
+Add Complaint
+Remove Complaint
+
+This allows advisers to correct or modify complaints if the PDF extraction is imperfect.
+
+6. Save Behavior
+
+When the adviser clicks Save Inspection:
+
+Save all complaints as an array/list in the database linked to the vehicle entry.
+
+Example data structure:
+
+complaints: [
+ "Scheme service as per 5th year or 75k",
+ "Front RH power window not working",
+ "Abnormal noise from front side while driving",
+ "Washing AC engine",
+ "Noise from engine side additional repair"
+]
+7. Error Handling
+
+If the PDF does not contain the section:
+
+"Demanded Repair (Customer Voice)"
+
+Show message:
+
+"Customer complaint section not found in the uploaded PDF."
+
+Allow the adviser to manually add complaints using the Add Complaint button.
+
+8. Expected Result
+
+The Service Adviser should be able to:
+
+Upload a Repair Order PDF
+
+The system automatically extracts customer complaints
+
+Displays them as editable complaint items
+
+Adviser can edit, add, or delete complaints
+
+Save the final complaint list with the inspection record
+
+This will eliminate manual typing of complaints while still giving the adviser full control to edit them.

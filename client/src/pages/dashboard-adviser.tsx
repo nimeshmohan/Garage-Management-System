@@ -1,16 +1,67 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useVehicles, useUpdateVehicle } from "@/hooks/use-vehicles";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/status-badge";
-import { FileSearch, History, ClipboardList, Pencil, Check, X, AlertCircle } from "lucide-react";
+import { FileSearch, History, ClipboardList, Pencil, Check, X, AlertCircle, Upload, Plus, Trash2, FileText } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import * as pdfjsLib from "pdfjs-dist";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+
+async function parsePdfComplaints(file: File): Promise<string[]> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+
+  const allLines: string[] = [];
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const items = textContent.items as any[];
+
+    const lineMap = new Map<number, string[]>();
+    for (const item of items) {
+      const y = Math.round(item.transform[5]);
+      if (!lineMap.has(y)) lineMap.set(y, []);
+      lineMap.get(y)!.push(item.str);
+    }
+
+    const sortedYs = Array.from(lineMap.keys()).sort((a, b) => b - a);
+    for (const y of sortedYs) {
+      const lineText = lineMap.get(y)!.join("").trim();
+      if (lineText) allLines.push(lineText);
+    }
+  }
+
+  const fullText = allLines.join("\n");
+  const marker = "Demanded Repair (Customer Voice)";
+  const markerIdx = fullText.indexOf(marker);
+  if (markerIdx === -1) throw new Error("SECTION_NOT_FOUND");
+
+  const afterSection = fullText.slice(markerIdx + marker.length);
+  const stopPatterns = [
+    /^Work Carried Out/i, /^Labour/i, /^Parts Used/i, /^Technician/i,
+    /^Sl\.?\s*No/i, /^Description/i, /^Qty/i, /^Amount/i,
+    /^Total/i, /^Sub\s*Total/i, /^VAT/i, /^Grand Total/i, /^Signature/i,
+    /^Advised Repair/i, /^Workshop/i, /^Foreman/i,
+  ];
+
+  const complaints: string[] = [];
+  for (const line of afterSection.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || /^\d+\.?$/.test(trimmed)) continue;
+    if (complaints.length > 0 && stopPatterns.some(p => p.test(trimmed))) break;
+    complaints.push(trimmed);
+  }
+  return complaints;
+}
 
 export function AdviserDashboard() {
   const { data: vehicles, isLoading } = useVehicles();
@@ -18,8 +69,12 @@ export function AdviserDashboard() {
   const { toast } = useToast();
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [findings, setFindings] = useState("");
+  const [complaints, setComplaints] = useState<string[]>([]);
   const [serviceNotes, setServiceNotes] = useState("");
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState("");
+  const [pdfFileName, setPdfFileName] = useState("");
+  const pdfInputRef = useRef<HTMLInputElement>(null);
   const [reopenReason, setReopenReason] = useState("");
   const [reopenId, setReopenId] = useState<number | null>(null);
   const [showConfirmDeliver, setShowConfirmDeliver] = useState<number | null>(null);
@@ -51,6 +106,33 @@ export function AdviserDashboard() {
     });
   };
 
+  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      setPdfError("Please upload a valid .pdf file.");
+      return;
+    }
+    setPdfError("");
+    setPdfLoading(true);
+    setPdfFileName(file.name);
+    try {
+      const extracted = await parsePdfComplaints(file);
+      setComplaints(extracted);
+      if (extracted.length === 0) setPdfError("No complaint lines found in the section. You may add them manually.");
+    } catch (err: any) {
+      if (err.message === "SECTION_NOT_FOUND") {
+        setPdfError("Customer complaint section not found in the uploaded PDF. You may add complaints manually.");
+        setComplaints([]);
+      } else {
+        setPdfError("Failed to read PDF. Please try again or add complaints manually.");
+        setComplaints([]);
+      }
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   const handleInspect = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedId) return;
@@ -58,11 +140,18 @@ export function AdviserDashboard() {
     const isPostWork = vehicle?.status === "Ready for Delivery";
     updateVehicle.mutate({
       id: selectedId,
-      findings: isPostWork ? (vehicle?.findings || findings) : findings,
+      complaints: JSON.stringify(complaints),
       serviceNotes: isPostWork ? (vehicle?.serviceNotes || serviceNotes) : serviceNotes,
       status: isPostWork ? "Delivered" : "Inspection Completed"
     }, {
-      onSuccess: () => { setSelectedId(null); setFindings(""); setServiceNotes(""); }
+      onSuccess: () => {
+        setSelectedId(null);
+        setComplaints([]);
+        setServiceNotes("");
+        setPdfError("");
+        setPdfFileName("");
+        if (pdfInputRef.current) pdfInputRef.current.value = "";
+      }
     });
   };
 
@@ -208,14 +297,28 @@ export function AdviserDashboard() {
             {v.partsWaitDuration > 0 && (
               <div className="flex justify-between"><span className="text-muted-foreground">Parts Wait:</span> <span className="font-medium text-orange-600">{formatDuration(v.partsWaitDuration)}</span></div>
             )}
-            {(v.findings || v.workDetails || v.reopenReason) && (
+            {(v.complaints || v.workDetails || v.reopenReason) && (
               <div className="pt-2 mt-2 border-t border-border/50 space-y-2">
-                {v.findings && (
-                  <div>
-                    <span className="text-muted-foreground block text-xs mb-1">Findings:</span>
-                    <p className="text-xs line-clamp-2">{v.findings}</p>
-                  </div>
-                )}
+                {v.complaints && (() => {
+                  try {
+                    const c: string[] = JSON.parse(v.complaints);
+                    if (Array.isArray(c) && c.length > 0) return (
+                      <div>
+                        <span className="text-muted-foreground block text-xs mb-1">Customer Complaints:</span>
+                        <ul className="space-y-0.5">
+                          {c.slice(0, 3).map((item, i) => (
+                            <li key={i} className="flex items-start gap-1 text-xs">
+                              <span className="text-muted-foreground shrink-0 mt-0.5">•</span>
+                              <span className="line-clamp-1">{item}</span>
+                            </li>
+                          ))}
+                          {c.length > 3 && <li className="text-xs text-muted-foreground">+{c.length - 3} more</li>}
+                        </ul>
+                      </div>
+                    );
+                  } catch { /* invalid JSON */ }
+                  return null;
+                })()}
                 {v.workDetails && (
                   <div>
                     <span className="text-muted-foreground block text-xs mb-1">Work Details:</span>
@@ -322,19 +425,117 @@ export function AdviserDashboard() {
       </Tabs>
 
       {/* Inspection Dialog */}
-      <Dialog open={!!selectedId} onOpenChange={(val) => !val && setSelectedId(null)}>
-        <DialogContent>
+      <Dialog open={!!selectedId} onOpenChange={(val) => {
+        if (!val) {
+          setSelectedId(null);
+          setComplaints([]);
+          setServiceNotes("");
+          setPdfError("");
+          setPdfFileName("");
+          if (pdfInputRef.current) pdfInputRef.current.value = "";
+        }
+      }}>
+        <DialogContent className="w-full max-w-[95vw] sm:max-w-[580px] max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Vehicle Inspection Report</DialogTitle></DialogHeader>
-          <form onSubmit={handleInspect} className="space-y-4 mt-4">
+          <form onSubmit={handleInspect} className="space-y-5 mt-4">
+
+            {/* RO PDF Upload */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Diagnostic Findings</label>
-              <Textarea required placeholder="Detail the issues found..." className="min-h-[100px]" value={findings} onChange={e => setFindings(e.target.value)} />
+              <label className="text-sm font-medium">Upload Repair Order (RO) PDF</label>
+              <div
+                className="border-2 border-dashed border-border rounded-xl p-5 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => pdfInputRef.current?.click()}
+                data-testid="upload-area-pdf"
+              >
+                {pdfLoading ? (
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    <p className="text-sm">Reading PDF and extracting complaints...</p>
+                  </div>
+                ) : pdfFileName ? (
+                  <div className="flex items-center justify-center gap-2 text-sm">
+                    <FileText className="w-5 h-5 text-red-500 shrink-0" />
+                    <span className="font-medium truncate">{pdfFileName}</span>
+                    <button type="button" className="text-muted-foreground hover:text-destructive ml-1" onClick={(e) => {
+                      e.stopPropagation();
+                      setComplaints([]); setPdfFileName(""); setPdfError("");
+                      if (pdfInputRef.current) pdfInputRef.current.value = "";
+                    }}><X className="w-4 h-4" /></button>
+                  </div>
+                ) : (
+                  <>
+                    <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm font-medium">Click to upload RO PDF</p>
+                    <p className="text-xs text-muted-foreground mt-1">Complaints will be extracted automatically</p>
+                  </>
+                )}
+                <input ref={pdfInputRef} type="file" accept=".pdf" className="hidden" onChange={handlePdfUpload} data-testid="input-pdf-upload" />
+              </div>
+
+              {pdfError && (
+                <div className="flex items-start gap-2 text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/10 p-3 rounded-lg">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{pdfError}</span>
+                </div>
+              )}
             </div>
+
+            {/* Editable Complaints List */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">
+                  Customer Complaints
+                  {complaints.length > 0 && <span className="ml-2 text-xs text-muted-foreground font-normal">({complaints.length})</span>}
+                </label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs gap-1"
+                  onClick={() => setComplaints(prev => [...prev, ""])}
+                  data-testid="button-add-complaint"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Complaint
+                </Button>
+              </div>
+
+              {complaints.length === 0 ? (
+                <div className="border border-dashed border-border/60 rounded-lg p-4 text-center text-sm text-muted-foreground">
+                  No complaints yet. Upload an RO PDF or click "Add Complaint".
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {complaints.map((c, i) => (
+                    <div key={i} className="flex items-center gap-2" data-testid={`complaint-row-${i}`}>
+                      <span className="text-xs text-muted-foreground shrink-0 w-5 text-right">{i + 1}.</span>
+                      <Input
+                        value={c}
+                        onChange={e => setComplaints(prev => prev.map((x, j) => j === i ? e.target.value : x))}
+                        className="flex-1 h-8 text-sm"
+                        placeholder={`Complaint ${i + 1}`}
+                        data-testid={`input-complaint-${i}`}
+                      />
+                      <button
+                        type="button"
+                        className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        onClick={() => setComplaints(prev => prev.filter((_, j) => j !== i))}
+                        data-testid={`button-delete-complaint-${i}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Service Notes */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Recommended Services / Notes</label>
-              <Textarea placeholder="Parts needed, services recommended..." value={serviceNotes} onChange={e => setServiceNotes(e.target.value)} />
+              <Textarea placeholder="Parts needed, services recommended..." value={serviceNotes} onChange={e => setServiceNotes(e.target.value)} data-testid="textarea-service-notes" />
             </div>
-            <Button type="submit" className="w-full" disabled={updateVehicle.isPending}>
+
+            <Button type="submit" className="w-full" disabled={updateVehicle.isPending} data-testid="button-submit-inspection">
               {updateVehicle.isPending ? "Saving..." : "Complete Inspection & Forward"}
             </Button>
           </form>
