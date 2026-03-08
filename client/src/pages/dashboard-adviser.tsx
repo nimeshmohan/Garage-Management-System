@@ -15,6 +15,56 @@ import * as pdfjsLib from "pdfjs-dist";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
+function toSentenceCase(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+
+function cleanComplaintLine(raw: string): string {
+  // Remove leading number with optional dot/colon/bracket and spaces: "4 ", "4.", "4)", "4:"
+  let cleaned = raw.replace(/^\s*\d+[\s.):]\s*/, "").trim();
+  // Collapse multiple spaces
+  cleaned = cleaned.replace(/\s{2,}/g, " ");
+  // Convert to sentence case if line is fully uppercase
+  if (cleaned === cleaned.toUpperCase() && cleaned.length > 2) {
+    cleaned = toSentenceCase(cleaned);
+  }
+  // Normalise "–" spacing around dashes
+  cleaned = cleaned.replace(/\s*[-–—]\s*/g, " – ");
+  return cleaned.trim();
+}
+
+const STOP_SECTION_PATTERNS = [
+  /^Inventory/i,
+  /^Repair\s+Order/i,
+  /^Finance\s+Information/i,
+  /^Customer\s+Order\s+Description/i,
+  /^Estimated\s+Cost/i,
+  /^Estimated\s+Date/i,
+  /^Terms\s+of\s+Business/i,
+  /^Work\s+Carried\s+Out/i,
+  /^Labour/i,
+  /^Parts\s+Used/i,
+  /^Technician/i,
+  /^Advised\s+Repair/i,
+  /^Workshop/i,
+  /^Foreman/i,
+  /^Sl\.?\s*No/i,
+  /^Grand\s+Total/i,
+  /^Sub\s*Total/i,
+  /^VAT/i,
+  /^Signature/i,
+];
+
+// Patterns that mark lines to skip entirely (not a stop, just noise)
+const NOISE_PATTERNS = [
+  /^\s*\d+\s*$/, // standalone number
+  /^page\s+\d+/i, // page footer
+  /^www\./i, // website URL
+  /^https?:\/\//i,
+  /^\+?\d[\d\s\-().]{6,}$/, // phone number
+  /^[A-Z0-9.\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i, // email
+];
+
 async function parsePdfComplaints(file: File): Promise<string[]> {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
@@ -46,19 +96,26 @@ async function parsePdfComplaints(file: File): Promise<string[]> {
   if (markerIdx === -1) throw new Error("SECTION_NOT_FOUND");
 
   const afterSection = fullText.slice(markerIdx + marker.length);
-  const stopPatterns = [
-    /^Work Carried Out/i, /^Labour/i, /^Parts Used/i, /^Technician/i,
-    /^Sl\.?\s*No/i, /^Description/i, /^Qty/i, /^Amount/i,
-    /^Total/i, /^Sub\s*Total/i, /^VAT/i, /^Grand Total/i, /^Signature/i,
-    /^Advised Repair/i, /^Workshop/i, /^Foreman/i,
-  ];
 
   const complaints: string[] = [];
   for (const line of afterSection.split("\n")) {
     const trimmed = line.trim();
-    if (!trimmed || /^\d+\.?$/.test(trimmed)) continue;
-    if (complaints.length > 0 && stopPatterns.some(p => p.test(trimmed))) break;
-    complaints.push(trimmed);
+
+    // Skip blank lines and noise
+    if (!trimmed) continue;
+    if (NOISE_PATTERNS.some(p => p.test(trimmed))) continue;
+
+    // Stop at the next section heading
+    if (STOP_SECTION_PATTERNS.some(p => p.test(trimmed))) break;
+
+    const cleaned = cleanComplaintLine(trimmed);
+
+    // After cleaning, skip if empty or just punctuation
+    if (!cleaned || /^[-–—.:,]+$/.test(cleaned)) continue;
+    // Skip very short fragments (likely table headers or stray chars)
+    if (cleaned.length < 3) continue;
+
+    complaints.push(cleaned);
   }
   return complaints;
 }
