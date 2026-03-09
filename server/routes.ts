@@ -281,9 +281,6 @@ export async function registerRoutes(
 }
 
 async function seedDatabase() {
-  const existing = await storage.getUserByUsername("reception");
-  if (existing) return;
-
   const usersToCreate = [
     { username: "reception",  password: "service123", name: "Receptionist",          role: "receptionist" },
     { username: "nasiya",     password: "service123", name: "NASIYA NAUSHAD",         role: "service_adviser" },
@@ -302,6 +299,9 @@ async function seedDatabase() {
   ];
 
   for (const u of usersToCreate) {
-    await storage.createUser(u);
+    const existing = await storage.getUserByUsername(u.username);
+    if (!existing) {
+      await storage.createUser(u);
+    }
   }
 }
