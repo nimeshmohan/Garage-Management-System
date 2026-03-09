@@ -61,6 +61,7 @@ export function useLogin() {
         service_adviser: "/service-adviser",
         job_controller: "/job-controller",
         technician: "/technician",
+        service_head: "/service-head",
         customer: "/track"
       };
       setLocation(routes[user.role] || "/");
