@@ -17,7 +17,7 @@ export function serveStatic(app: Express) {
   );
 
   // SPA fallback: only for real page navigations (not /api, not assets, not files)
-  app.get("*", (req, res, next) => {
+  app.get("/{*path}", (req, res, next) => {
     if (req.method !== "GET") return next();
     if (req.path.startsWith("/api")) return next();
     if (req.path.startsWith("/assets")) return next();
