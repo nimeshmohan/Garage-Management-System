@@ -4,6 +4,8 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import session from "express-session";
+import pgSession from "connect-pg-simple";
+import { pool } from "./db";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -19,6 +21,8 @@ export async function registerRoutes(
     throw new Error("SESSION_SECRET must be set in production");
   }
 
+  const PgSession = pgSession(session);
+
   // Use simple session based auth for MVP
   app.use(
     session({
@@ -26,6 +30,14 @@ export async function registerRoutes(
       resave: false,
       saveUninitialized: false,
       proxy: isProd,
+      ...(isProd
+        ? {
+            store: new PgSession({
+              pool,
+              createTableIfMissing: true,
+            }),
+          }
+        : {}),
       cookie: {
         secure: isProd,
         sameSite: "lax",
