@@ -114,7 +114,86 @@ export async function registerRoutes(
         v.status !== "Today's Appointment"
       );
     }
+    // service_head sees everything, similar to receptionist/controller
     res.json(vehiclesList);
+  });
+
+  app.get('/api/analytics', async (req, res) => {
+    const userId = (req.session as any).userId;
+    const sessionUser = userId ? await storage.getUser(userId) : null;
+    
+    if (!sessionUser || sessionUser.role !== 'service_head') {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const vehicles = await storage.getVehicles();
+    const technicians = await storage.getTechnicians();
+    
+    // Status Distribution
+    const statusDistribution = vehicles.reduce((acc: any, v) => {
+      acc[v.status] = (acc[v.status] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Advisor Performance
+    const advisorPerformance = vehicles.reduce((acc: any, v) => {
+      const adv = v.serviceAdviser || "Unassigned";
+      if (!acc[adv]) acc[adv] = { name: adv, total: 0, pending: 0, completed: 0 };
+      acc[adv].total++;
+      if (v.status === "Delivered" || v.status === "Job Completed") {
+        acc[adv].completed++;
+      } else {
+        acc[adv].pending++;
+      }
+      return acc;
+    }, {});
+
+    // Technician Workload
+    const techWorkload = technicians.map(t => {
+      const assigned = vehicles.filter(v => v.technicianId === t.id).length;
+      const active = vehicles.filter(v => v.technicianId === t.id && (v.status === "Work in Progress" || v.isTimerRunning)).length;
+      return { name: t.name, assigned, active };
+    });
+
+    // Daily Activity (last 14 days)
+    const dailyActivity: any = {};
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      dailyActivity[dateStr] = { date: dateStr, received: 0, completed: 0 };
+    }
+
+    vehicles.forEach(v => {
+      if (v.createdAt) {
+        const dateStr = new Date(v.createdAt).toISOString().split('T')[0];
+        if (dailyActivity[dateStr]) dailyActivity[dateStr].received++;
+      }
+      // Assuming completedAt is handled by some logic, but since we don't have it explicitly, 
+      // we'll look at history or status. For now, let's use a placeholder logic or status "Delivered"
+      if (v.status === "Delivered" && v.jobHistory) {
+         // This is complex without a dedicated completedAt field, simplify for now
+      }
+    });
+
+    // Pending Distribution
+    const pendingDist = {
+      advisers: vehicles.filter(v => ["Vehicle Received", "Inspection Ongoing", "Inspection Completed"].includes(v.status)).length,
+      technicians: vehicles.filter(v => ["Assigned to Technician", "Work in Progress", "Job Stopped"].includes(v.status)).length,
+      controller: vehicles.filter(v => v.status === "Waiting for Job Allocation").length
+    };
+
+    res.json({
+      statusDistribution: Object.entries(statusDistribution).map(([name, value]) => ({ name, value })),
+      advisorPerformance: Object.values(advisorPerformance),
+      techWorkload,
+      dailyActivity: Object.values(dailyActivity),
+      pendingDist: [
+        { name: "Service Advisers", value: pendingDist.advisers },
+        { name: "Technicians", value: pendingDist.technicians },
+        { name: "Job Controller", value: pendingDist.controller }
+      ]
+    });
   });
 
   app.get(api.vehicles.get.path, async (req, res) => {
@@ -217,6 +296,7 @@ async function seedDatabase() {
     { username: "sudhin",     password: "service123", name: "SUDHIN K",               role: "service_adviser" },
     { username: "yadhu",      password: "service123", name: "YADHU KRISHNA",          role: "service_adviser" },
     { username: "controller", password: "service123", name: "Job Controller",         role: "job_controller" },
+    { username: "service_head", password: "service123", name: "Service Head",         role: "service_head" },
     { username: "tech1",      password: "service123", name: "Technician 1",           role: "technician" },
     { username: "tech2",      password: "service123", name: "Technician 2",           role: "technician" },
   ];

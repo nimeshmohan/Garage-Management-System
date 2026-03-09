@@ -14,6 +14,7 @@ import { ReceptionistDashboard } from "@/pages/dashboard-receptionist";
 import { AdviserDashboard } from "@/pages/dashboard-adviser";
 import { ControllerDashboard } from "@/pages/dashboard-controller";
 import { TechnicianDashboard } from "@/pages/dashboard-technician";
+import { ServiceHeadDashboard } from "@/pages/dashboard-service-head";
 import { TrackVehicle } from "@/pages/track-vehicle";
 import { Loader2 } from "lucide-react";
 
@@ -40,6 +41,7 @@ function ProtectedRoute({ component: Component, allowedRoles }: { component: Rea
       service_adviser: "/service-adviser",
       job_controller: "/job-controller",
       technician: "/technician",
+      service_head: "/service-head",
       customer: "/track"
     };
     return <Redirect to={defaults[user.role] || "/"} />;
@@ -77,6 +79,9 @@ function Router() {
       <Route path="/technician">
         {() => <ProtectedRoute component={TechnicianDashboard} allowedRoles={["technician"]} />}
       </Route>
+      <Route path="/service-head">
+        {() => <ProtectedRoute component={ServiceHeadDashboard} allowedRoles={["service_head"]} />}
+      </Route>
 
       {/* Root redirect */}
       <Route path="/">
@@ -87,6 +92,7 @@ function Router() {
             service_adviser: "/service-adviser",
             job_controller: "/job-controller",
             technician: "/technician",
+            service_head: "/service-head",
             customer: "/track"
           };
           return <Redirect to={defaults[user.role] || "/login"} />;
