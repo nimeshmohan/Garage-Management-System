@@ -402,6 +402,15 @@ export function AdviserDashboard() {
                     <p className="text-xs text-destructive bg-destructive/5 p-1 rounded">{v.reopenReason}</p>
                   </div>
                 )}
+                {v.status === "Job Stopped" && v.stopReason && (
+                  <div>
+                    <span className="text-destructive block text-xs font-bold mb-1">Job Stopped Reason:</span>
+                    <div className="text-xs text-destructive bg-destructive/5 p-1 flex items-start gap-1 rounded">
+                      <StopCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                      <span>{v.stopReason}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -417,12 +426,6 @@ export function AdviserDashboard() {
                   <FileSearch className="w-4 h-4 mr-2" />
                   {v.status === "Waiting for Adviser" ? "Perform Inspection" : "Edit Inspection"}
                 </Button>
-              )}
-              {v.status === "Job Stopped" && v.stopReason && (
-                <div className="w-full text-sm text-destructive bg-destructive/5 p-2 rounded border border-destructive/20 flex items-start gap-2">
-                  <StopCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span><span className="font-bold">Reason:</span> {v.stopReason}</span>
-                </div>
               )}
               {v.status === "Ready for Delivery" && (
                 <>
@@ -539,7 +542,7 @@ export function AdviserDashboard() {
                 <p className="text-lg font-medium">No vehicles waiting for job allocation.</p>
               </div>
             ) : (
-              waitingAllocation.map(v => <VehicleCard key={v.id} v={v} showAction={false} />)
+              waitingAllocation.map(v => <VehicleCard key={v.id} v={v} showAction={v.status === "Inspection Completed"} />)
             )}
           </div>
         </TabsContent>

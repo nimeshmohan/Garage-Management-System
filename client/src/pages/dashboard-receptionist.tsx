@@ -794,12 +794,6 @@ function VehicleList({ list, isLoading, onReceive, updateVehicle }: {
                         <span className="font-medium text-green-700 dark:text-green-400">{format(new Date(v.receivedAt), 'HH:mm, dd MMM yyyy')}</span>
                       </div>
                     )}
-                    {v.status === "Job Stopped" && v.stopReason && (
-                      <div className="col-span-2 text-destructive bg-destructive/5 p-1.5 rounded border border-destructive/20 mt-1 flex items-start gap-1.5">
-                        <StopCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                        <span><span className="font-bold">Reason:</span> {v.stopReason}</span>
-                      </div>
-                    )}
                   </div>
                   <div className="flex gap-2">
                     {v.status === "Today's Appointment" && (
@@ -880,15 +874,7 @@ function VehicleList({ list, isLoading, onReceive, updateVehicle }: {
                           : <span className="text-muted-foreground">—</span>
                         }
                       </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={v.status} />
-                        {v.status === "Job Stopped" && v.stopReason && (
-                          <div className="mt-1 text-xs text-destructive flex items-start gap-1">
-                            <StopCircle className="w-3 h-3 mt-0.5 shrink-0" />
-                            <span className="line-clamp-2" title={v.stopReason}>{v.stopReason}</span>
-                          </div>
-                        )}
-                      </td>
+                      <td className="px-4 py-3"><StatusBadge status={v.status} /></td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1">
                           {!isReceived && (
