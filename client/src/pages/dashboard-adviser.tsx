@@ -144,6 +144,11 @@ export function AdviserDashboard() {
   const [jobCardSaving, setJobCardSaving] = useState(false);
   const [jobCardError, setJobCardError] = useState("");
 
+  // Edit card details modal state
+  const [editCardVehicle, setEditCardVehicle] = useState<any | null>(null);
+  const [editCardForm, setEditCardForm] = useState({ customerName: "", vehicleNumber: "", vehicleModel: "", complaint: "", phone: "" });
+  const [editCardSaving, setEditCardSaving] = useState(false);
+
   const filteredVehicles = vehicles?.filter(v => {
     const matchesSearch =
       v.vehicleNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -278,13 +283,64 @@ export function AdviserDashboard() {
     }
   };
 
+  const openEditCard = (v: any) => {
+    setEditCardVehicle(v);
+    let complaintText = "";
+    if (v.complaints) {
+      try {
+        const arr: string[] = JSON.parse(v.complaints);
+        complaintText = Array.isArray(arr) ? arr.join("\n") : v.complaints;
+      } catch { complaintText = v.complaints; }
+    }
+    setEditCardForm({
+      customerName: v.customerName || "",
+      vehicleNumber: v.vehicleNumber || "",
+      vehicleModel: v.vehicleModel || "",
+      complaint: complaintText,
+      phone: v.phone || "",
+    });
+  };
+
+  const saveEditCard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editCardVehicle) return;
+    setEditCardSaving(true);
+    try {
+      const lines = editCardForm.complaint.split("\n").map(l => l.trim()).filter(Boolean);
+      const res = await fetch(`/api/vehicles/${editCardVehicle.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName: editCardForm.customerName,
+          vehicleNumber: editCardForm.vehicleNumber,
+          vehicleModel: editCardForm.vehicleModel,
+          complaints: JSON.stringify(lines),
+          phone: editCardForm.phone,
+        }),
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast({ variant: "destructive", title: "Update failed", description: data.message || "Could not save changes." });
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: ['/api/vehicles'] });
+      toast({ title: "Card updated", description: "Vehicle details have been saved." });
+      setEditCardVehicle(null);
+    } catch {
+      toast({ variant: "destructive", title: "Error", description: "Failed to save. Please try again." });
+    } finally {
+      setEditCardSaving(false);
+    }
+  };
+
   const formatDuration = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     return `${hrs}h ${mins}m`;
   };
 
-  const VehicleCard = ({ v, showAction = true }: { v: any; showAction?: boolean }) => {
+  const VehicleCard = ({ v, showAction = true, showEditCard = false }: { v: any; showAction?: boolean; showEditCard?: boolean }) => {
     const isEditingThis = editingJobCardId === v.id;
 
     return (
@@ -295,7 +351,19 @@ export function AdviserDashboard() {
               <h3 className="font-bold text-base sm:text-lg truncate">{v.vehicleModel}</h3>
               <p className="text-sm text-muted-foreground">{v.vehicleNumber}</p>
             </div>
-            <StatusBadge status={v.status} />
+            <div className="flex items-center gap-2 shrink-0">
+              {showEditCard && (
+                <button
+                  onClick={() => openEditCard(v)}
+                  className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                  title="Edit vehicle details"
+                  data-testid={`button-edit-card-${v.id}`}
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              )}
+              <StatusBadge status={v.status} />
+            </div>
           </div>
 
           <div className="bg-muted/50 p-3 rounded-lg text-sm mb-5 space-y-2">
@@ -542,7 +610,7 @@ export function AdviserDashboard() {
                 <p className="text-lg font-medium">No vehicles waiting for job allocation.</p>
               </div>
             ) : (
-              waitingAllocation.map(v => <VehicleCard key={v.id} v={v} showAction={v.status === "Inspection Completed"} />)
+              waitingAllocation.map(v => <VehicleCard key={v.id} v={v} showAction={v.status === "Inspection Completed"} showEditCard={true} />)
             )}
           </div>
         </TabsContent>
@@ -803,6 +871,91 @@ export function AdviserDashboard() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Vehicle Details Dialog */}
+      <Dialog open={!!editCardVehicle} onOpenChange={(val) => !val && setEditCardVehicle(null)}>
+        <DialogContent className="max-w-md w-full">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-4 h-4" /> Edit Vehicle Details
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={saveEditCard} className="space-y-4 mt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Customer Name</label>
+                <Input
+                  required
+                  value={editCardForm.customerName}
+                  onChange={e => setEditCardForm(f => ({ ...f, customerName: e.target.value }))}
+                  placeholder="Customer name"
+                  data-testid="input-edit-card-customer"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Contact Number</label>
+                <Input
+                  value={editCardForm.phone}
+                  onChange={e => setEditCardForm(f => ({ ...f, phone: e.target.value }))}
+                  placeholder="Phone number"
+                  data-testid="input-edit-card-phone"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Vehicle Number</label>
+                <Input
+                  required
+                  value={editCardForm.vehicleNumber}
+                  onChange={e => setEditCardForm(f => ({ ...f, vehicleNumber: e.target.value }))}
+                  placeholder="e.g. KL 01 AB 1234"
+                  data-testid="input-edit-card-vrn"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Vehicle Model</label>
+                <Input
+                  required
+                  value={editCardForm.vehicleModel}
+                  onChange={e => setEditCardForm(f => ({ ...f, vehicleModel: e.target.value }))}
+                  placeholder="e.g. Toyota Camry"
+                  data-testid="input-edit-card-model"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Complaint / Issue Description</label>
+              <Textarea
+                value={editCardForm.complaint}
+                onChange={e => setEditCardForm(f => ({ ...f, complaint: e.target.value }))}
+                placeholder="Enter each complaint on a new line..."
+                className="min-h-[100px] resize-none"
+                data-testid="textarea-edit-card-complaint"
+              />
+              <p className="text-xs text-muted-foreground">Each line will be saved as a separate complaint item.</p>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setEditCardVehicle(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1"
+                disabled={editCardSaving}
+                data-testid="button-save-edit-card"
+              >
+                {editCardSaving ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
