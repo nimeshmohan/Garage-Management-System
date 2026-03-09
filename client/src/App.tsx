@@ -14,7 +14,13 @@ import { ReceptionistDashboard } from "@/pages/dashboard-receptionist";
 import { AdviserDashboard } from "@/pages/dashboard-adviser";
 import { ControllerDashboard } from "@/pages/dashboard-controller";
 import { TechnicianDashboard } from "@/pages/dashboard-technician";
-import { ServiceHeadDashboard } from "@/pages/dashboard-service-head";
+import { 
+  ServiceHeadDashboardPage,
+  ServiceHeadVehiclesPage,
+  ServiceHeadStaffPage,
+  ServiceHeadPendingPage,
+  ServiceHeadAnalysisPage
+} from "@/pages/dashboard-service-head";
 import { TrackVehicle } from "@/pages/track-vehicle";
 import { Loader2 } from "lucide-react";
 
@@ -79,8 +85,22 @@ function Router() {
       <Route path="/technician">
         {() => <ProtectedRoute component={TechnicianDashboard} allowedRoles={["technician"]} />}
       </Route>
+      
+      {/* Service Head Routes */}
       <Route path="/service-head">
-        {() => <ProtectedRoute component={ServiceHeadDashboard} allowedRoles={["service_head"]} />}
+        {() => <ProtectedRoute component={ServiceHeadDashboardPage} allowedRoles={["service_head"]} />}
+      </Route>
+      <Route path="/service-head/vehicles">
+        {() => <ProtectedRoute component={ServiceHeadVehiclesPage} allowedRoles={["service_head"]} />}
+      </Route>
+      <Route path="/service-head/staff">
+        {() => <ProtectedRoute component={ServiceHeadStaffPage} allowedRoles={["service_head"]} />}
+      </Route>
+      <Route path="/service-head/pending">
+        {() => <ProtectedRoute component={ServiceHeadPendingPage} allowedRoles={["service_head"]} />}
+      </Route>
+      <Route path="/service-head/analysis">
+        {() => <ProtectedRoute component={ServiceHeadAnalysisPage} allowedRoles={["service_head"]} />}
       </Route>
 
       {/* Root redirect */}

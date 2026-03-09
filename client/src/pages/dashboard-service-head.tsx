@@ -447,10 +447,19 @@ function PendingWork({ vehicles }: { vehicles: Vehicle[] }) {
   );
 }
 
-export function ServiceHeadDashboard() {
-  const [activeTab, setActiveTab] = useState("dashboard");
-  const { toast } = useToast();
+export function ServiceHeadAnalysisPage() {
+  const { data: analytics, isLoading } = useQuery<AnalyticsData>({
+    queryKey: ["/api/analytics"],
+    refetchInterval: 30000,
+  });
 
+  if (isLoading) return <div className="flex h-[60vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  if (!analytics) return null;
+
+  return <AnalysisView data={analytics} />;
+}
+
+export function ServiceHeadDashboardPage() {
   const { data: vehicles = [], isLoading: isLoadingVehicles } = useQuery<Vehicle[]>({
     queryKey: ["/api/vehicles"],
     refetchInterval: 30000,
@@ -461,113 +470,43 @@ export function ServiceHeadDashboard() {
     refetchInterval: 30000,
   });
 
-  const handleLogout = async () => {
-    try {
-      await apiRequest("POST", "/api/logout");
-      window.location.href = "/login";
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Logout failed",
-        description: "Please try again.",
-      });
-    }
-  };
+  if (isLoadingVehicles || isLoadingAnalytics) return <div className="flex h-[60vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  if (!analytics) return null;
 
-  const menuItems = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "vehicles", label: "Vehicles Overview", icon: Car },
-    { id: "staff", label: "Staff Performance", icon: Users },
-    { id: "pending", label: "Pending Work", icon: ClipboardList },
-    { id: "analysis", label: "Analysis", icon: BarChart2 },
-  ];
-
-  const isLoading = isLoadingVehicles || isLoadingAnalytics;
-
-  return (
-    <div className="flex min-h-screen bg-muted/40 font-sans">
-      {/* Sidebar Navigation */}
-      <aside className="w-64 bg-slate-900 flex-shrink-0 flex flex-col hidden md:flex text-white border-r border-slate-800">
-        <div className="p-8">
-          <h1 className="text-xl font-black tracking-tighter flex items-center gap-2">
-            <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-white italic">A</div>
-            AUTO MGR
-          </h1>
-          <p className="text-[10px] font-bold text-slate-500 tracking-widest uppercase mt-2">Service Head Office</p>
-        </div>
-        
-        <nav className="flex-1 px-4 space-y-1">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
-                  isActive 
-                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-[1.02]" 
-                    : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-                }`}
-              >
-                <Icon className={`w-5 h-5 ${isActive ? "" : "opacity-70"}`} />
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="p-6">
-          <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700/50">
-             <div className="flex items-center gap-3 mb-4">
-               <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold text-primary">SH</div>
-               <div className="min-w-0">
-                 <p className="text-sm font-bold truncate">Service Head</p>
-                 <p className="text-[10px] text-slate-500 truncate">Administrator</p>
-               </div>
-             </div>
-             <Button 
-               variant="ghost" 
-               className="w-full justify-start text-slate-400 hover:text-red-400 hover:bg-red-400/10 h-10 px-3 rounded-lg" 
-               onClick={handleLogout}
-              >
-              <LogOut className="w-4 h-4 mr-3" />
-              Sign Out
-            </Button>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <main className="flex-1 overflow-auto">
-        <header className="h-20 flex items-center justify-between px-8 bg-background border-b sticky top-0 z-10">
-           <h2 className="text-xl font-bold tracking-tight capitalize">
-             {activeTab.replace('-', ' ')}
-           </h2>
-           <div className="flex items-center gap-4">
-              <div className="hidden sm:flex flex-col text-right">
-                 <p className="text-xs text-muted-foreground">Today's Date</p>
-                 <p className="text-sm font-bold">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
-              </div>
-           </div>
-        </header>
-
-        <div className="p-8 max-w-[1600px] mx-auto">
-          {isLoading ? (
-            <div className="flex h-[60vh] items-center justify-center">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            </div>
-          ) : (
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">
-              {activeTab === "analysis" && analytics && <AnalysisView data={analytics} />}
-              {activeTab === "dashboard" && analytics && <DashboardSummary vehicles={vehicles} analytics={analytics} />}
-              {activeTab === "vehicles" && <VehiclesOverview vehicles={vehicles} />}
-              {activeTab === "staff" && analytics && <StaffPerformance analytics={analytics} />}
-              {activeTab === "pending" && <PendingWork vehicles={vehicles} />}
-            </div>
-          )}
-        </div>
-      </main>
-    </div>
-  );
+  return <DashboardSummary vehicles={vehicles} analytics={analytics} />;
 }
+
+export function ServiceHeadVehiclesPage() {
+  const { data: vehicles = [], isLoading } = useQuery<Vehicle[]>({
+    queryKey: ["/api/vehicles"],
+    refetchInterval: 30000,
+  });
+
+  if (isLoading) return <div className="flex h-[60vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+
+  return <VehiclesOverview vehicles={vehicles} />;
+}
+
+export function ServiceHeadStaffPage() {
+  const { data: analytics, isLoading } = useQuery<AnalyticsData>({
+    queryKey: ["/api/analytics"],
+    refetchInterval: 30000,
+  });
+
+  if (isLoading) return <div className="flex h-[60vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  if (!analytics) return null;
+
+  return <StaffPerformance analytics={analytics} />;
+}
+
+export function ServiceHeadPendingPage() {
+  const { data: vehicles = [], isLoading } = useQuery<Vehicle[]>({
+    queryKey: ["/api/vehicles"],
+    refetchInterval: 30000,
+  });
+
+  if (isLoading) return <div className="flex h-[60vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+
+  return <PendingWork vehicles={vehicles} />;
+}
+
