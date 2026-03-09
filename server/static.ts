@@ -10,10 +10,19 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
+  app.use(
+    express.static(distPath, {
+      index: false,
+    }),
+  );
 
-  // fall through to index.html if the file doesn't exist
-  app.use("/{*path}", (_req, res) => {
+  // SPA fallback: only for real page navigations (not /api, not assets, not files)
+  app.get("*", (req, res, next) => {
+    if (req.method !== "GET") return next();
+    if (req.path.startsWith("/api")) return next();
+    if (req.path.startsWith("/assets")) return next();
+    if (path.extname(req.path)) return next();
+
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
