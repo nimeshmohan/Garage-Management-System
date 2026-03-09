@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: auto-service-manager
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: auto-service-manager-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+    preDeployCommand: npm run db:push
+
+databases:
+  - name: auto-service-manager-db
+    plan: free

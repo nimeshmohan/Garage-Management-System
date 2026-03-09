@@ -9,13 +9,29 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Render (and most PaaS) terminates TLS at a proxy/load balancer.
+  // Trust the first proxy so `secure` cookies work as expected in production.
+  app.set("trust proxy", 1);
+
+  const isProd = process.env.NODE_ENV === "production";
+  const sessionSecret = process.env.SESSION_SECRET || (isProd ? "" : "dev-secret");
+  if (isProd && !sessionSecret) {
+    throw new Error("SESSION_SECRET must be set in production");
+  }
+
   // Use simple session based auth for MVP
-  app.use(session({
-    secret: process.env.SESSION_SECRET || 'super-secret',
-    resave: false,
-    saveUninitialized: false,
-    cookie: { secure: false } // Set to true if using https
-  }));
+  app.use(
+    session({
+      secret: sessionSecret,
+      resave: false,
+      saveUninitialized: false,
+      proxy: isProd,
+      cookie: {
+        secure: isProd,
+        sameSite: "lax",
+      },
+    }),
+  );
 
   // Auth Routes
   app.post(api.auth.login.path, async (req, res) => {
