@@ -348,8 +348,8 @@ export function AdviserDashboard() {
         <CardContent className="p-5 sm:p-6">
           <div className="flex justify-between items-start mb-4 gap-2">
             <div className="min-w-0">
-              <h3 className="font-bold text-base sm:text-lg truncate">{v.vehicleModel}</h3>
-              <p className="text-sm text-muted-foreground">{v.vehicleNumber}</p>
+              <h3 className="font-bold text-base sm:text-lg truncate">{v.vehicleNumber}</h3>
+              <p className="text-sm text-muted-foreground">{v.vehicleModel}</p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {showEditCard && (
