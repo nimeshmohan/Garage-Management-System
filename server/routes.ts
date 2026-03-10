@@ -34,17 +34,46 @@ export async function registerRoutes(
     throw new Error("SESSION_SECRET must be set in production");
   }
 
-  const PgSession = pgSession(session);
+  const PostgreSQLStore = pgSession(session);
+const sessionStore = new PostgreSQLStore({
+  pool,
+  createTableIfMissing: false, // Disable this as it fails with ENOENT in bundled prod
+});
+
+  // Manually ensure session table exists
+  try {
+    console.log("[Auth] Ensuring session table exists...");
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "session" (
+        "sid" varchar NOT NULL COLLATE "default",
+        "sess" json NOT NULL,
+        "expire" timestamp(6) NOT NULL
+      ) WITH (OIDS=FALSE);
+    `);
+    await db.execute(sql`
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'session_pkey') THEN
+          ALTER TABLE "session" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE;
+        END IF;
+      END $$;
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
+    `);
+    console.log("[Auth] Session table verified.");
+  } catch (err: any) {
+    console.error("[Auth] Failed to create session table:", err);
+  }
 
   // Use simple session based auth for MVP
   app.use(
     session({
       secret: sessionSecret,
+      store: sessionStore,
       resave: false,
       saveUninitialized: false,
       proxy: isProd,
-      ...(isProd
-        ? {
             store: new PgSession({
               pool,
               createTableIfMissing: true,
