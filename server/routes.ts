@@ -6,6 +6,17 @@ import { z } from "zod";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
 import { pool } from "./db";
+import { sql } from "drizzle-orm";
+
+function parseJSON<T>(json: any, fallback: T): T {
+  if (!json) return fallback;
+  if (typeof json !== 'string') return json as T;
+  try {
+    return JSON.parse(json);
+  } catch (e) {
+    return fallback;
+  }
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -54,7 +65,13 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Invalid credentials" });
       }
       (req.session as any).userId = user.id;
-      res.json(user);
+      req.session.save((err) => {
+        if (err) {
+          console.error(`[Login] Session save error:`, err);
+          return res.status(500).json({ message: "Session save failed" });
+        }
+        res.json(user);
+      });
     } catch (e) {
       res.status(400).json({ message: "Invalid input" });
     }
@@ -123,8 +140,19 @@ export async function registerRoutes(
     const sessionUser = userId ? await storage.getUser(userId) : null;
     
     if (!sessionUser || sessionUser.role !== 'service_head') {
-      return res.status(403).json({ message: "Forbidden" });
+      console.log(`[Analytics] 403: user=${sessionUser?.username}, role=${sessionUser?.role}, hasSession=${!!req.sessionID}`);
+      return res.status(403).json({ 
+        message: "Forbidden",
+        debug: {
+          hasUser: !!sessionUser,
+          required: "service_head",
+          role: sessionUser?.role,
+          hasSession: !!req.sessionID
+        }
+      });
     }
+
+    try {
 
     const vehicles = await storage.getVehicles();
     const technicians = await storage.getTechnicians();
@@ -150,17 +178,25 @@ export async function registerRoutes(
 
     // Technician Workload
     const techWorkload = technicians.map(t => {
-      const assigned = vehicles.filter(v => v.technicianId === t.id).length;
-      const active = vehicles.filter(v => v.technicianId === t.id && (v.status === "Work in Progress" || v.isTimerRunning)).length;
-      return { name: t.name, assigned, active };
+      const history = parseJSON<any[]>(t.jobHistory, []);
+      const completedToday = Array.isArray(history) ? history.filter((h: any) => {
+        const date = new Date(h.completedAt);
+        return date.toDateString() === new Date().toDateString();
+      }).length : 0;
+      return { 
+        name: t.name, 
+        completedToday,
+        activeJobs: vehicles.filter(v => v.technicianId === t.id && v.status !== 'Delivered').length,
+        capacity: 10 
+      };
     });
 
-    // Daily Activity (last 14 days)
-    const dailyActivity: any = {};
+    const dailyActivity: Record<string, any> = {};
+    // Last 14 days
     for (let i = 13; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = d.toLocaleDateString();
       dailyActivity[dateStr] = { date: dateStr, received: 0, completed: 0 };
     }
 
@@ -183,16 +219,35 @@ export async function registerRoutes(
       controller: vehicles.filter(v => v.status === "Waiting for Job Allocation").length
     };
 
+      res.json({
+        statusDistribution: Object.entries(statusDistribution).map(([name, value]) => ({ name, value })),
+        advisorPerformance: Object.values(advisorPerformance),
+        techWorkload,
+        dailyActivity: Object.values(dailyActivity),
+        pendingDist: [
+          { name: "Service Advisers", value: pendingDist.advisers },
+          { name: "Technicians", value: pendingDist.technicians },
+          { name: "Job Controller", value: pendingDist.controller }
+        ]
+      });
+    } catch (e: any) {
+      console.error("[Analytics] Error:", e);
+      res.status(500).json({ message: "Internal server error", error: e.message });
+    }
+  });
+
+  app.get('/api/debug-session', async (req, res) => {
+    const userId = (req.session as any).userId;
+    const { db } = await import("./db");
+    const { users } = await import("@shared/schema");
+    const allUsers = await db.select().from(users);
+    
     res.json({
-      statusDistribution: Object.entries(statusDistribution).map(([name, value]) => ({ name, value })),
-      advisorPerformance: Object.values(advisorPerformance),
-      techWorkload,
-      dailyActivity: Object.values(dailyActivity),
-      pendingDist: [
-        { name: "Service Advisers", value: pendingDist.advisers },
-        { name: "Technicians", value: pendingDist.technicians },
-        { name: "Job Controller", value: pendingDist.controller }
-      ]
+      sessionId: req.sessionID,
+      userId,
+      usernames: allUsers.map(u => u.username),
+      cookie: req.session.cookie,
+      env: process.env.NODE_ENV
     });
   });
 

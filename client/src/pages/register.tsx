@@ -95,6 +95,7 @@ export function Register() {
                     <SelectItem value="service_adviser">Service Adviser</SelectItem>
                     <SelectItem value="job_controller">Job Controller</SelectItem>
                     <SelectItem value="technician">Technician</SelectItem>
+                    <SelectItem value="service_head">Service Head</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

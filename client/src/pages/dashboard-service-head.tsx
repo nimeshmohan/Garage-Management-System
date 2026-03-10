@@ -460,17 +460,57 @@ export function ServiceHeadAnalysisPage() {
 }
 
 export function ServiceHeadDashboardPage() {
-  const { data: vehicles = [], isLoading: isLoadingVehicles } = useQuery<Vehicle[]>({
+  const { 
+    data: vehicles = [], 
+    isLoading: isLoadingVehicles, 
+    error: vehiclesError 
+  } = useQuery<Vehicle[]>({
     queryKey: ["/api/vehicles"],
     refetchInterval: 30000,
   });
 
-  const { data: analytics, isLoading: isLoadingAnalytics } = useQuery<AnalyticsData>({
+  const { 
+    data: analytics, 
+    isLoading: isLoadingAnalytics,
+    error: analyticsError
+  } = useQuery<AnalyticsData>({
     queryKey: ["/api/analytics"],
     refetchInterval: 30000,
+    retry: false // Don't spam retries for auth errors
   });
 
   if (isLoadingVehicles || isLoadingAnalytics) return <div className="flex h-[60vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  
+  if (vehiclesError || analyticsError) {
+    const error: any = analyticsError || vehiclesError;
+    return (
+      <div className="p-8">
+        <Card className="border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle className="text-red-800">Error Loading Dashboard</CardTitle>
+            <CardDescription className="text-red-600">
+              {error?.message || "An unexpected error occurred"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+             <p className="text-sm text-red-700 mb-4 text-pretty">
+               The dashboard could not be loaded because of a permission or data server issue.
+             </p>
+             {error?.debug && (
+               <div className="bg-red-100 p-4 rounded-lg text-xs font-mono text-red-900 overflow-auto max-h-40">
+                 <p className="font-bold mb-1 underline">Debug Information:</p>
+                 <pre>{JSON.stringify(error.debug, null, 2)}</pre>
+               </div>
+             )}
+             <Button variant="outline" className="mt-6 border-red-300 text-red-800 hover:bg-red-100" onClick={() => window.location.reload()}>
+               Try Refreshing
+             </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (!analytics) return null;
 
   return <DashboardSummary vehicles={vehicles} analytics={analytics} />;
