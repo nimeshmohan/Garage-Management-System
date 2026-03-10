@@ -59,14 +59,32 @@ export async function registerRoutes(
   );
 
   // Health check/Diagnostic route
-  app.get("/api/health", async (_req, res) => {
+  app.get("/api/health", async (req, res) => {
     try {
       const result = await db.execute(sql`SELECT 1`);
-      const userCount = await db.select({ count: sql<number>`count(*)` }).from(users);
+      const allUsers = await db.select({ 
+        username: users.username, 
+        role: users.role 
+      }).from(users);
+      
+      // Test session write
+      let sessionWrite = "untested";
+      try {
+        (req.session as any).healthCheck = true;
+        await new Promise<void>((resolve, reject) => {
+          req.session.save((err) => err ? reject(err) : resolve());
+        });
+        sessionWrite = "ok";
+      } catch (sessErr: any) {
+        sessionWrite = `error: ${sessErr.message}`;
+      }
+
       res.json({ 
         status: "ok", 
         database: "connected", 
-        userCount: userCount[0].count,
+        userCount: allUsers.length,
+        usernames: allUsers.map(u => `${u.username} (${u.role})`),
+        sessionWrite,
         env: process.env.NODE_ENV,
         hasSessionSecret: !!process.env.SESSION_SECRET
       });
