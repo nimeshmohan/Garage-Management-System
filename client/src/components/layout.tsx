@@ -40,7 +40,6 @@ export function Layout({ children }: LayoutProps) {
       case "service_head":
         return [
           { href: "/service-head", label: "Dashboard", icon: LayoutDashboard },
-          { href: "/service-head", label: "Dashboard", icon: LayoutDashboard },
           { href: "/service-head/vehicles", label: "Vehicle Overview", icon: CarFront },
           { href: "/service-head/staff", label: "Staff Performance", icon: User },
           { href: "/service-head/pending", label: "Pending Works", icon: ClipboardCheck },
