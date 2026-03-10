@@ -5,8 +5,9 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
-import { pool } from "./db";
+import { pool, db } from "./db";
 import { sql } from "drizzle-orm";
+import { users } from "@shared/schema";
 
 function parseJSON<T>(json: any, fallback: T): T {
   if (!json) return fallback;
