@@ -18,6 +18,15 @@ function parseJSON<T>(json: any, fallback: T): T {
   }
 }
 
+function parseJSON<T>(json: string | null | undefined, fallback: T): T {
+  if (!json) return fallback;
+  try {
+    return JSON.parse(json);
+  } catch (e) {
+    return fallback;
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -329,6 +338,87 @@ export async function registerRoutes(
     }
   });
 
+  // Analytics Route for Service Head
+  app.get("/api/analytics", async (req, res) => {
+    const userId = (req.session as any).userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== 'service_head') {
+      return res.status(403).json({ 
+        message: "Forbidden", 
+        debug: { hasUser: !!user, required: "service_head" } 
+      });
+    }
+
+    const vehicles = await storage.getVehicles();
+    const technicians = await storage.getTechnicians();
+
+    // Stats calculation
+    const now = new Date();
+    const todayStr = now.toDateString();
+    const month = now.getMonth();
+    const year = now.getFullYear();
+
+    const stats = {
+      appointed: {
+        today: vehicles.filter(v => v.status === "Today's Appointment" && new Date(v.createdAt!).toDateString() === todayStr).length,
+        monthly: vehicles.filter(v => v.status === "Today's Appointment" && new Date(v.createdAt!).getMonth() === month && new Date(v.createdAt!).getFullYear() === year).length
+      },
+      received: {
+        today: vehicles.filter(v => v.receivedAt && new Date(v.receivedAt).toDateString() === todayStr).length,
+        monthly: vehicles.filter(v => v.receivedAt && new Date(v.receivedAt).getMonth() === month && new Date(v.receivedAt).getFullYear() === year).length
+      },
+      serviced: {
+        today: vehicles.filter(v => v.status === "Delivered" && v.workStartedAt && new Date(v.workStartedAt).toDateString() === todayStr).length,
+        monthly: vehicles.filter(v => v.status === "Delivered" && v.workStartedAt && new Date(v.workStartedAt).getMonth() === month && new Date(v.workStartedAt).getFullYear() === year).length
+      },
+      pending: vehicles.filter(v => v.status !== "Delivered" && v.status !== "Today's Appointment").length,
+      jobStopped: vehicles.filter(v => v.status === "Job Stopped").length,
+      delivered: vehicles.filter(v => v.status === "Delivered").length
+    };
+
+    // Workflow stages
+    const workflow = {
+      waitingAllocation: vehicles.filter(v => v.status === "Waiting for Job Allocation").length,
+      assigned: vehicles.filter(v => v.status === "Assigned to Technician").length,
+      wip: vehicles.filter(v => v.status === "Work in Progress").length,
+      finalInspection: vehicles.filter(v => v.status === "Pending Final Inspection").length,
+      reopened: vehicles.filter(v => v.status === "Reopened").length
+    };
+
+    // Technician performance
+    const techPerformance = technicians.map(t => {
+      const history = parseJSON<any[]>(t.jobHistory, []);
+      return {
+        name: t.name,
+        activeJobs: vehicles.filter(v => v.technicianId === t.id && v.status !== 'Delivered').length,
+        completedToday: Array.isArray(history) ? history.filter(h => new Date(h.completedAt).toDateString() === todayStr).length : 0,
+        pending: vehicles.filter(v => v.technicianId === t.id && v.status !== 'Delivered').length
+      };
+    });
+
+    // Aging alerts (> 24h)
+    const alerts = vehicles
+      .filter(v => {
+        if (v.status === "Delivered") return false;
+        const receivedDate = v.receivedAt ? new Date(v.receivedAt) : v.createdAt;
+        const diffHours = (now.getTime() - new Date(receivedDate!).getTime()) / (1000 * 60 * 60);
+        return diffHours > 24;
+      })
+      .map(v => {
+        const receivedDate = v.receivedAt ? new Date(v.receivedAt) : v.createdAt;
+        const diffDays = Math.floor((now.getTime() - new Date(receivedDate!).getTime()) / (1000 * 60 * 60 * 24));
+        return {
+          vehicleNumber: v.vehicleNumber,
+          status: v.status,
+          aging: diffDays > 0 ? `${diffDays} Days` : "More than 24h"
+        };
+      });
+
+    res.json({ stats, workflow, techPerformance, alerts });
+  });
+
   // Seed DB with mock users
   seedDatabase().catch(console.error);
 
@@ -351,6 +441,7 @@ async function seedDatabase() {
     { username: "service_head", password: "service123", name: "Service Head",         role: "service_head" },
     { username: "tech1",      password: "service123", name: "Technician 1",           role: "technician" },
     { username: "tech2",      password: "service123", name: "Technician 2",           role: "technician" },
+    { username: "servicehead", password: "service123", name: "Service Head",        role: "service_head" },
   ];
 
   for (const u of usersToCreate) {

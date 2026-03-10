@@ -103,6 +103,23 @@ function Router() {
         {() => <ProtectedRoute component={ServiceHeadAnalysisPage} allowedRoles={["service_head"]} />}
       </Route>
 
+      {/* Service Head Routes */}
+      <Route path="/service-head">
+        {() => <ProtectedRoute component={ServiceHeadDashboardPage} allowedRoles={["service_head"]} />}
+      </Route>
+      <Route path="/service-head/vehicles">
+        {() => <ProtectedRoute component={ServiceHeadVehiclesPage} allowedRoles={["service_head"]} />}
+      </Route>
+      <Route path="/service-head/staff">
+        {() => <ProtectedRoute component={ServiceHeadStaffPage} allowedRoles={["service_head"]} />}
+      </Route>
+      <Route path="/service-head/pending">
+        {() => <ProtectedRoute component={ServiceHeadPendingPage} allowedRoles={["service_head"]} />}
+      </Route>
+      <Route path="/service-head/analysis">
+        {() => <ProtectedRoute component={ServiceHeadAnalysisPage} allowedRoles={["service_head"]} />}
+      </Route>
+
       {/* Root redirect */}
       <Route path="/">
         {() => {
