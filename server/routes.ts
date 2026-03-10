@@ -57,6 +57,24 @@ export async function registerRoutes(
     }),
   );
 
+  // Health check/Diagnostic route
+  app.get("/api/health", async (_req, res) => {
+    try {
+      const result = await db.execute(sql`SELECT 1`);
+      const userCount = await db.select({ count: sql<number>`count(*)` }).from(users);
+      res.json({ 
+        status: "ok", 
+        database: "connected", 
+        userCount: userCount[0].count,
+        env: process.env.NODE_ENV,
+        hasSessionSecret: !!process.env.SESSION_SECRET
+      });
+    } catch (e: any) {
+      console.error("[Health] Diagnostic check failed:", e);
+      res.status(500).json({ status: "error", message: e.message });
+    }
+  });
+
   // Auth Routes
   app.post(api.auth.login.path, async (req, res) => {
     try {
@@ -456,7 +474,15 @@ async function seedDatabase() {
   for (const u of usersToCreate) {
     const existing = await storage.getUserByUsername(u.username);
     if (!existing) {
-      await storage.createUser(u);
+      try {
+        await storage.createUser(u);
+        console.log(`[Seed] Created user: ${u.username}`);
+      } catch (err) {
+        console.error(`[Seed] Failed to create user ${u.username}:`, err);
+      }
+    } else {
+      console.log(`[Seed] User already exists: ${u.username}`);
     }
   }
+  console.log("[Seed] Database seeding completed.");
 }
