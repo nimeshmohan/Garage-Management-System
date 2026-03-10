@@ -48,6 +48,7 @@ export const vehicles = pgTable("vehicles", {
 
   createdAt: timestamp("created_at").defaultNow(),
   receivedAt: text("received_at"),
+  deliveredAt: timestamp("delivered_at"),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });

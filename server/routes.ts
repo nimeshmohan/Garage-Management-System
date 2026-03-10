@@ -213,106 +213,6 @@ const sessionStore = new PostgreSQLStore({
     res.json(vehiclesList);
   });
 
-  app.get('/api/analytics', async (req, res) => {
-    const userId = (req.session as any).userId;
-    const sessionUser = userId ? await storage.getUser(userId) : null;
-    
-    if (!sessionUser || sessionUser.role !== 'service_head') {
-      console.log(`[Analytics] 403: user=${sessionUser?.username}, role=${sessionUser?.role}, hasSession=${!!req.sessionID}`);
-      return res.status(403).json({ 
-        message: "Forbidden",
-        debug: {
-          hasUser: !!sessionUser,
-          required: "service_head",
-          role: sessionUser?.role,
-          hasSession: !!req.sessionID
-        }
-      });
-    }
-
-    try {
-
-    const vehicles = await storage.getVehicles();
-    const technicians = await storage.getTechnicians();
-    
-    // Status Distribution
-    const statusDistribution = vehicles.reduce((acc: any, v) => {
-      acc[v.status] = (acc[v.status] || 0) + 1;
-      return acc;
-    }, {});
-
-    // Advisor Performance
-    const advisorPerformance = vehicles.reduce((acc: any, v) => {
-      const adv = v.serviceAdviser || "Unassigned";
-      if (!acc[adv]) acc[adv] = { name: adv, total: 0, pending: 0, completed: 0 };
-      acc[adv].total++;
-      if (v.status === "Delivered" || v.status === "Job Completed") {
-        acc[adv].completed++;
-      } else {
-        acc[adv].pending++;
-      }
-      return acc;
-    }, {});
-
-    // Technician Workload
-    const techWorkload = technicians.map(t => {
-      const history = parseJSON<any[]>(t.jobHistory, []);
-      const completedToday = Array.isArray(history) ? history.filter((h: any) => {
-        const date = new Date(h.completedAt);
-        return date.toDateString() === new Date().toDateString();
-      }).length : 0;
-      return { 
-        name: t.name, 
-        completedToday,
-        activeJobs: vehicles.filter(v => v.technicianId === t.id && v.status !== 'Delivered').length,
-        capacity: 10 
-      };
-    });
-
-    const dailyActivity: Record<string, any> = {};
-    // Last 14 days
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toLocaleDateString();
-      dailyActivity[dateStr] = { date: dateStr, received: 0, completed: 0 };
-    }
-
-    vehicles.forEach(v => {
-      if (v.createdAt) {
-        const dateStr = new Date(v.createdAt).toISOString().split('T')[0];
-        if (dailyActivity[dateStr]) dailyActivity[dateStr].received++;
-      }
-      // Assuming completedAt is handled by some logic, but since we don't have it explicitly, 
-      // we'll look at history or status. For now, let's use a placeholder logic or status "Delivered"
-      if (v.status === "Delivered" && v.jobHistory) {
-         // This is complex without a dedicated completedAt field, simplify for now
-      }
-    });
-
-    // Pending Distribution
-    const pendingDist = {
-      advisers: vehicles.filter(v => ["Vehicle Received", "Inspection Ongoing", "Inspection Completed"].includes(v.status)).length,
-      technicians: vehicles.filter(v => ["Assigned to Technician", "Work in Progress", "Job Stopped"].includes(v.status)).length,
-      controller: vehicles.filter(v => v.status === "Waiting for Job Allocation").length
-    };
-
-      res.json({
-        statusDistribution: Object.entries(statusDistribution).map(([name, value]) => ({ name, value })),
-        advisorPerformance: Object.values(advisorPerformance),
-        techWorkload,
-        dailyActivity: Object.values(dailyActivity),
-        pendingDist: [
-          { name: "Service Advisers", value: pendingDist.advisers },
-          { name: "Technicians", value: pendingDist.technicians },
-          { name: "Job Controller", value: pendingDist.controller }
-        ]
-      });
-    } catch (e: any) {
-      console.error("[Analytics] Error:", e);
-      res.status(500).json({ message: "Internal server error", error: e.message });
-    }
-  });
 
   app.get('/api/debug-session', async (req, res) => {
     const userId = (req.session as any).userId;
@@ -374,6 +274,14 @@ const sessionStore = new PostgreSQLStore({
         }
       }
 
+      // Record deliveredAt when status becomes Delivered
+      if (input.status === "Delivered") {
+        const existing = await storage.getVehicle(id);
+        if (existing && !existing.deliveredAt) {
+          (input as any).deliveredAt = new Date();
+        }
+      }
+
       const vehicle = await storage.updateVehicle(id, input);
       res.json(vehicle);
     } catch (e) {
@@ -409,83 +317,155 @@ const sessionStore = new PostgreSQLStore({
 
   // Analytics Route for Service Head
   app.get("/api/analytics", async (req, res) => {
-    const userId = (req.session as any).userId;
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
-    
-    const user = await storage.getUser(userId);
-    if (!user || user.role !== 'service_head') {
-      return res.status(403).json({ 
-        message: "Forbidden", 
-        debug: { hasUser: !!user, required: "service_head" } 
-      });
-    }
+    try {
+      const userId = (req.session as any).userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== 'service_head') {
+        return res.status(403).json({ message: "Forbidden" });
+      }
 
-    const vehicles = await storage.getVehicles();
-    const technicians = await storage.getTechnicians();
+      const allVehicles = await storage.getVehicles();
+      const technicians = await storage.getTechnicians();
 
-    // Stats calculation
-    const now = new Date();
-    const todayStr = now.toDateString();
-    const month = now.getMonth();
-    const year = now.getFullYear();
+      const now = new Date();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    const stats = {
-      appointed: {
-        today: vehicles.filter(v => v.status === "Today's Appointment" && new Date(v.createdAt!).toDateString() === todayStr).length,
-        monthly: vehicles.filter(v => v.status === "Today's Appointment" && new Date(v.createdAt!).getMonth() === month && new Date(v.createdAt!).getFullYear() === year).length
-      },
-      received: {
-        today: vehicles.filter(v => v.receivedAt && new Date(v.receivedAt).toDateString() === todayStr).length,
-        monthly: vehicles.filter(v => v.receivedAt && new Date(v.receivedAt).getMonth() === month && new Date(v.receivedAt).getFullYear() === year).length
-      },
-      serviced: {
-        today: vehicles.filter(v => v.status === "Delivered" && v.workStartedAt && new Date(v.workStartedAt).toDateString() === todayStr).length,
-        monthly: vehicles.filter(v => v.status === "Delivered" && v.workStartedAt && new Date(v.workStartedAt).getMonth() === month && new Date(v.workStartedAt).getFullYear() === year).length
-      },
-      pending: vehicles.filter(v => v.status !== "Delivered" && v.status !== "Today's Appointment").length,
-      jobStopped: vehicles.filter(v => v.status === "Job Stopped").length,
-      delivered: vehicles.filter(v => v.status === "Delivered").length
-    };
-
-    // Workflow stages
-    const workflow = {
-      waitingAllocation: vehicles.filter(v => v.status === "Waiting for Job Allocation").length,
-      assigned: vehicles.filter(v => v.status === "Assigned to Technician").length,
-      wip: vehicles.filter(v => v.status === "Work in Progress").length,
-      finalInspection: vehicles.filter(v => v.status === "Pending Final Inspection").length,
-      reopened: vehicles.filter(v => v.status === "Reopened").length
-    };
-
-    // Technician performance
-    const techPerformance = technicians.map(t => {
-      const history = parseJSON<any[]>(t.jobHistory, []);
-      return {
-        name: t.name,
-        activeJobs: vehicles.filter(v => v.technicianId === t.id && v.status !== 'Delivered').length,
-        completedToday: Array.isArray(history) ? history.filter(h => new Date(h.completedAt).toDateString() === todayStr).length : 0,
-        pending: vehicles.filter(v => v.technicianId === t.id && v.status !== 'Delivered').length
+      const stats = {
+        appointed: { today: 0, monthly: 0 },
+        received: { today: 0, monthly: 0 },
+        serviced: { today: 0, monthly: 0 },
+        pending: 0,
+        jobStopped: 0,
+        delivered: 0
       };
-    });
 
-    // Aging alerts (> 24h)
-    const alerts = vehicles
-      .filter(v => {
-        if (v.status === "Delivered") return false;
-        const receivedDate = v.receivedAt ? new Date(v.receivedAt) : v.createdAt;
-        const diffHours = (now.getTime() - new Date(receivedDate!).getTime()) / (1000 * 60 * 60);
-        return diffHours > 24;
-      })
-      .map(v => {
-        const receivedDate = v.receivedAt ? new Date(v.receivedAt) : v.createdAt;
-        const diffDays = Math.floor((now.getTime() - new Date(receivedDate!).getTime()) / (1000 * 60 * 60 * 24));
+      allVehicles.forEach(v => {
+        const createdDate = v.createdAt ? new Date(v.createdAt) : null;
+        const receivedDate = v.receivedAt ? new Date(v.receivedAt) : null;
+        const deliveredDate = v.deliveredAt ? new Date(v.deliveredAt) : null;
+
+        // Appointed: entryType is "Today's Appointment"
+        if (v.entryType === "Today's Appointment") {
+          if (createdDate && createdDate >= today) stats.appointed.today++;
+          if (createdDate && createdDate >= startOfMonth) stats.appointed.monthly++;
+        }
+
+        // Received: Any status EXCEPT "Today's Appointment"
+        if (v.status !== "Today's Appointment") {
+          const effectiveReceivedDate = receivedDate || createdDate;
+          if (effectiveReceivedDate && effectiveReceivedDate >= today) stats.received.today++;
+          if (effectiveReceivedDate && effectiveReceivedDate >= startOfMonth) stats.received.monthly++;
+        }
+
+        // Serviced: marked "Delivered" or "Ready for Delivery"
+        if (v.status === "Delivered" || v.status === "Ready for Delivery") {
+          const effectiveDeliveredDate = deliveredDate || (v.status === "Delivered" ? createdDate : null);
+          if (effectiveDeliveredDate && effectiveDeliveredDate >= today) stats.serviced.today++;
+          if (effectiveDeliveredDate && effectiveDeliveredDate >= startOfMonth) stats.serviced.monthly++;
+        }
+
+        // Live Stats
+        if (["Waiting for Adviser", "Waiting for Job Allocation", "Work in Progress", "Inspection Completed", "Reopened"].includes(v.status)) {
+          stats.pending++;
+        }
+        if (v.status === "Job Stopped") stats.jobStopped++;
+        if (v.status === "Delivered") stats.delivered++;
+      });
+
+      // Workflow counts
+      const workflow = {
+        waitingAllocation: allVehicles.filter(v => v.status === "Waiting for Job Allocation" || v.status === "Inspection Completed").length,
+        assigned: allVehicles.filter(v => v.status === "Work in Progress" && !v.isTimerRunning).length,
+        wip: allVehicles.filter(v => v.status === "Work in Progress" && v.isTimerRunning).length,
+        finalInspection: allVehicles.filter(v => v.status === "Ready for Delivery").length,
+        reopened: allVehicles.filter(v => v.status === "Reopened").length,
+      };
+
+      // Technician performance
+      const techPerformance = technicians.map(t => {
+        const techJobs = allVehicles.filter(v => v.technicianId === t.id);
         return {
-          vehicleNumber: v.vehicleNumber,
-          status: v.status,
-          aging: diffDays > 0 ? `${diffDays} Days` : "More than 24h"
+          id: t.id,
+          name: t.name,
+          activeJobs: techJobs.filter(v => v.status === "Work in Progress").length,
+          completedToday: techJobs.filter(v => v.status === "Delivered" && v.deliveredAt && new Date(v.deliveredAt) >= today).length
         };
       });
 
-    res.json({ stats, workflow, techPerformance, alerts });
+      // Alerts: Aging > 24h
+      const alerts = allVehicles
+        .filter(v => v.status !== "Delivered" && v.status !== "Today's Appointment")
+        .filter(v => {
+          const start = v.receivedAt ? new Date(v.receivedAt) : (v.createdAt ? new Date(v.createdAt) : now);
+          return (now.getTime() - start.getTime()) > 24 * 60 * 60 * 1000;
+        })
+        .map(v => {
+          const start = v.receivedAt ? new Date(v.receivedAt) : (v.createdAt ? new Date(v.createdAt) : now);
+          const hours = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60));
+          return {
+            vehicleNumber: v.vehicleNumber,
+            status: v.status,
+            aging: `${hours}h`
+          };
+        })
+        .slice(0, 5);
+
+      // Status Distribution
+      const statusCounts: Record<string, number> = {};
+      allVehicles.forEach(v => {
+        statusCounts[v.status] = (statusCounts[v.status] || 0) + 1;
+      });
+      const statusDistribution = Object.entries(statusCounts).map(([name, value]) => ({ name, value }));
+
+      // Advisor Performance
+      const advisors = Array.from(new Set(allVehicles.map(v => v.serviceAdviser).filter(Boolean)));
+      const advisorPerformance = advisors.map(name => {
+        const jobs = allVehicles.filter(v => v.serviceAdviser === name);
+        return {
+          name: name!,
+          total: jobs.length,
+          pending: jobs.filter(v => v.status !== "Delivered").length,
+          completed: jobs.filter(v => v.status === "Delivered").length
+        };
+      }).slice(0, 8);
+
+      // Daily Activity (Last 7 days)
+      const dailyActivity = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (6 - i));
+        d.setHours(0, 0, 0, 0);
+        const nextD = new Date(d);
+        nextD.setDate(d.getDate() + 1);
+
+        return {
+          date: d.toLocaleDateString('en-US', { weekday: 'short' }),
+          received: allVehicles.filter(v => {
+            const r = v.receivedAt ? new Date(v.receivedAt) : v.createdAt;
+            return r && new Date(r) >= d && new Date(r) < nextD;
+          }).length,
+          completed: allVehicles.filter(v => {
+            return v.deliveredAt && new Date(v.deliveredAt) >= d && new Date(v.deliveredAt) < nextD;
+          }).length
+        };
+      });
+
+      res.json({
+        stats,
+        workflow,
+        techPerformance,
+        alerts,
+        statusDistribution,
+        advisorPerformance,
+        dailyActivity
+      });
+    } catch (e: any) {
+      console.error("[Analytics] Error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   // Seed DB with mock users
