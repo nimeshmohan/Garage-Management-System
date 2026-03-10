@@ -61,19 +61,27 @@ export async function registerRoutes(
   app.post(api.auth.login.path, async (req, res) => {
     try {
       const { username, password } = api.auth.login.input.parse(req.body);
+      console.log(`[Auth] Login attempt for: ${username}`);
       const user = await storage.getUserByUsername(username);
-      if (!user || user.password !== password) {
+      if (!user) {
+        console.log(`[Auth] User not found: ${username}`);
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+      if (user.password !== password) {
+        console.log(`[Auth] Password mismatch for: ${username}`);
         return res.status(401).json({ message: "Invalid credentials" });
       }
       (req.session as any).userId = user.id;
       req.session.save((err) => {
         if (err) {
-          console.error(`[Login] Session save error:`, err);
+          console.error(`[Auth] Session save error for ${username}:`, err);
           return res.status(500).json({ message: "Session save failed" });
         }
+        console.log(`[Auth] Login successful for: ${username}, role: ${user.role}`);
         res.json(user);
       });
     } catch (e) {
+      console.error(`[Auth] Login validation error:`, e);
       res.status(400).json({ message: "Invalid input" });
     }
   });
@@ -81,14 +89,23 @@ export async function registerRoutes(
   app.post(api.auth.register.path, async (req, res) => {
     try {
       const input = api.auth.register.input.parse(req.body);
+      console.log(`[Auth] Register attempt: ${input.username} as ${input.role}`);
       const existing = await storage.getUserByUsername(input.username);
       if (existing) {
+        console.log(`[Auth] Registration failed: Username exists: ${input.username}`);
         return res.status(400).json({ message: "Username already exists" });
       }
       const user = await storage.createUser(input);
       (req.session as any).userId = user.id;
-      res.status(201).json(user);
+      req.session.save((err) => {
+        if (err) {
+          console.error(`[Auth] Registration session save error:`, err);
+        }
+        console.log(`[Auth] Registration successful: ${user.username}, id: ${user.id}`);
+        res.status(201).json(user);
+      });
     } catch (e) {
+      console.error(`[Auth] Registration error:`, e);
       if (e instanceof z.ZodError) {
         res.status(400).json({ message: e.errors[0].message });
       } else {
