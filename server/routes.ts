@@ -74,12 +74,6 @@ const sessionStore = new PostgreSQLStore({
       resave: false,
       saveUninitialized: false,
       proxy: isProd,
-            store: new PgSession({
-              pool,
-              createTableIfMissing: true,
-            }),
-          }
-        : {}),
       cookie: {
         secure: isProd,
         sameSite: "lax",
